@@ -19,7 +19,7 @@ def read_data(file, start, end, dt):
     return resample_df['pressure'] - np.mean(resample_df['pressure'])
 
 
-def rep_series(df, num_reps, start, end):
+def rep_series(df, start, end):
     freq = df.index.freq
     index = pd.DatetimeIndex(start=start, end=rep_end, freq=freq)
     values = np.tile(df.values, rep + 1)[:len(index)]
@@ -70,12 +70,12 @@ start = pd.datetime(2015, 5, 16, 0)
 end = pd.datetime(2016, 5, 16, 0)
 dt = '3H'
 dt_sec = pd.Timedelta(dt).total_seconds()
-rep = 0.5
+rep = 1
 rep_end = start.replace(year=start.year + rep)
 slr = 0.003
 
 tides = read_data(tides_file, start, end, dt)
-tides_rep = rep_series(tides, 10, start, end)
+tides_rep = rep_series(tides, start, end)
 tides_rep_with_slr = apply_linear_slr(tides_rep, slr)
 
 # Load weeksly ssc
