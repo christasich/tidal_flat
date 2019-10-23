@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import feather
 
 # %% Functions
 
@@ -33,9 +34,11 @@ def apply_linear_slr(df, rate_slr):
     return df + slr_values
 
 
-def calc_c0(h, dh, z, A, ssc):
+def calc_c0(h, dh, z, A, timestamp):
+    week = timestamp.week
+    ssc = ssc_by_week.loc[week].values[0]
     if (h > z and dh > 0):
-        return A * ssc * (h - z)
+        return A * ssc
     else:
         return 0
 
@@ -57,31 +60,40 @@ def calc_z(z_min_1, dz_min_1, dO, dP):
     return z_min_1 + dz_min_1 + dO - dP
 
 
-# %% Load Tides
-file = './data/p32_tides.csv'
+# %% Load Data
+
+# Load Tides
+tides_file = './data/processed/p32_tides.csv'
+
 
 start = pd.datetime(2015, 5, 16, 0)
 end = pd.datetime(2016, 5, 16, 0)
 dt = '3H'
 dt_sec = pd.Timedelta(dt).total_seconds()
-rep = 100
+rep = 0.5
 rep_end = start.replace(year=start.year + rep)
 slr = 0.003
 
-tides = read_data(file, start, end, dt)
+tides = read_data(tides_file, start, end, dt)
 tides_rep = rep_series(tides, 10, start, end)
 tides_rep_with_slr = apply_linear_slr(tides_rep, slr)
+
+# Load weeksly ssc
+
+ssc_file = './data/processed/ssc_by_week.csv'
+
+ssc_by_week = pd.read_csv(ssc_file, index_col=0)
+
 
 
 # %% Run sediment model
 gs = 0.03
 ws = ((gs / 1000) ** 2 * 1650 * 9.8) / 0.018
-rho = 700
-SSC = 0.2
+rho = 1100
 dP = 0
 dO = 0
 dM = 0.002
-A = 0.69
+A = 0.7
 z0 = 0.65
 
 columns = ['h', 'dh', 'C0', 'C', 'dz', 'z']
@@ -97,7 +109,7 @@ for t in tides_rep_with_slr.index[1:]:
     t_min_1 = t - pd.Timedelta(dt)
     df.loc[t, 'z'] = calc_z(df.at[t_min_1, 'z'], df.at[t_min_1, 'dz'], 0, 0)
     df.loc[t, 'C0'] = calc_c0(
-        df.at[t, 'h'], df.at[t, 'dh'], df.at[t, 'z'], A, SSC)
+        df.at[t, 'h'], df.at[t, 'dh'], df.at[t, 'z'], A, t)
     df.loc[t, 'C'] = calc_c(df.at[t, 'C0'], df.at[t, 'h'], df.at[t_min_1, 'h'],
                             df.at[t, 'dh'], df.at[t_min_1, 'C'], df.at[t, 'z'], ws, dt_sec)
     df.loc[t, 'dz'] = calc_dz(df.at[t, 'C'], ws, rho, dt_sec)
@@ -106,7 +118,7 @@ for t in tides_rep_with_slr.index[1:]:
 
 # %%
 
-f, ax = plt.subplots(figsize=(5,6))
+f, ax = plt.subplots(figsize=(9,3))
 sns.set_style("whitegrid")
 
 plt_data = df.shift(freq=pd.Timedelta(days=1326))
@@ -117,7 +129,5 @@ plt.title("Tidal Heights and Land Surface")
 plt.xlabel("Year")
 plt.ylabel("Height above Mean Water Level (m)")
 plt.xlim(start + pd.Timedelta(days=1326), rep_end + pd.Timedelta(days=1326))
+plt.savefig('fig.jpg', dpi=1000)
 plt.show()
-
-#%%
-#tides_rep.tail()
