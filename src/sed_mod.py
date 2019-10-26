@@ -60,6 +60,31 @@ def calc_z(z_min_1, dz_min_1, dO, dP):
     return z_min_1 + dz_min_1 + dO - dP
 
 
+def run_model(tides, gs, rho, dP, dO, dM, A, z0):
+    ws = ((gs / 1000) ** 2 * 1650 * 9.8) / 0.018
+    columns = ['h', 'dh', 'C0', 'C', 'dz', 'z']
+    index = tides.index
+    df = pd.DataFrame(index=index, columns=columns)
+    df[:] = 0
+    df.iloc[:, 5][0:2] = z0
+    df.loc[:, 'h'] = tides
+    df.loc[:, 'dh'] = df.loc[:, 'h'].diff() / pd.Timedelta(dt).total_seconds()
+
+    step = 1
+    for t in tides.index[1:]:
+        t_min_1 = t - pd.Timedelta(dt)
+        df.loc[t, 'z'] = calc_z(df.at[t_min_1, 'z'], df.at[t_min_1, 'dz'], 0, 0)
+        df.loc[t, 'C0'] = calc_c0(
+            df.at[t, 'h'], df.at[t, 'dh'], df.at[t, 'z'], A, t)
+        df.loc[t, 'C'] = calc_c(df.at[t, 'C0'], df.at[t, 'h'], df.at[t_min_1, 'h'],
+                                df.at[t, 'dh'], df.at[t_min_1, 'C'], df.at[t, 'z'], ws, dt_sec)
+        df.loc[t, 'dz'] = calc_dz(df.at[t, 'C'], ws, rho, dt_sec)
+        print('Completed step {0} of {1}.'.format(step, len(tides)))
+        step = step + 1
+        
+    return df
+
+
 # %% Load Data
 
 # Load Tides
@@ -70,7 +95,7 @@ start = pd.datetime(2015, 5, 16, 0)
 end = pd.datetime(2016, 5, 16, 0)
 dt = '3H'
 dt_sec = pd.Timedelta(dt).total_seconds()
-rep = 1
+rep = 20
 rep_end = start.replace(year=start.year + rep)
 slr = 0.003
 
@@ -87,34 +112,10 @@ ssc_by_week = pd.read_csv(ssc_file, index_col=0)
 
 
 # %% Run sediment model
-gs = 0.03
-ws = ((gs / 1000) ** 2 * 1650 * 9.8) / 0.018
-rho = 1100
-dP = 0
-dO = 0
-dM = 0.002
-A = 0.7
-z0 = 0.65
 
-columns = ['h', 'dh', 'C0', 'C', 'dz', 'z']
-index = tides_rep_with_slr.index
-df = pd.DataFrame(index=index, columns=columns)
-df[:] = 0
-df.iloc[:, 5][0:2] = z0
-df.loc[:, 'h'] = tides_rep_with_slr
-df.loc[:, 'dh'] = df.loc[:, 'h'].diff() / pd.Timedelta(dt).total_seconds()
+df = run_model(tides=tides_rep_with_slr, gs=0.03, rho=1100, dP=0, dO=0, dM=0.002, A=0.7, z0=0.65)
+feather.write_dataframe(df, './data/interim/base')
 
-step = 1
-for t in tides_rep_with_slr.index[1:]:
-    t_min_1 = t - pd.Timedelta(dt)
-    df.loc[t, 'z'] = calc_z(df.at[t_min_1, 'z'], df.at[t_min_1, 'dz'], 0, 0)
-    df.loc[t, 'C0'] = calc_c0(
-        df.at[t, 'h'], df.at[t, 'dh'], df.at[t, 'z'], A, t)
-    df.loc[t, 'C'] = calc_c(df.at[t, 'C0'], df.at[t, 'h'], df.at[t_min_1, 'h'],
-                            df.at[t, 'dh'], df.at[t_min_1, 'C'], df.at[t, 'z'], ws, dt_sec)
-    df.loc[t, 'dz'] = calc_dz(df.at[t, 'C'], ws, rho, dt_sec)
-    print('Completed step {0} of {1}.'.format(step, len(tides_rep_with_slr)))
-    step = step + 1
 
 # %%
 
@@ -131,3 +132,5 @@ plt.ylabel("Height above Mean Water Level (m)")
 plt.xlim(start + pd.Timedelta(days=1326), rep_end + pd.Timedelta(days=1326))
 plt.savefig('fig.jpg', dpi=1000)
 plt.show()
+
+#%%
