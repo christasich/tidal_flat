@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import feather
+from tqdm import tqdm
 
 # %% Functions
 
@@ -70,8 +71,7 @@ def run_model(tides, gs, rho, dP, dO, dM, A, z0):
     df.loc[:, 'h'] = tides
     df.loc[:, 'dh'] = df.loc[:, 'h'].diff() / pd.Timedelta(dt).total_seconds()
 
-    step = 1
-    for t in tides.index[1:]:
+    for t in tqdm(tides.index[1:], total=len(tides.index[1:]), unit='steps'):
         t_min_1 = t - pd.Timedelta(dt)
         df.loc[t, 'z'] = calc_z(df.at[t_min_1, 'z'], df.at[t_min_1, 'dz'], 0, 0)
         df.loc[t, 'C0'] = calc_c0(
@@ -79,8 +79,6 @@ def run_model(tides, gs, rho, dP, dO, dM, A, z0):
         df.loc[t, 'C'] = calc_c(df.at[t, 'C0'], df.at[t, 'h'], df.at[t_min_1, 'h'],
                                 df.at[t, 'dh'], df.at[t_min_1, 'C'], df.at[t, 'z'], ws, dt_sec)
         df.loc[t, 'dz'] = calc_dz(df.at[t, 'C'], ws, rho, dt_sec)
-        print('Completed step {0} of {1}.'.format(step, len(tides)))
-        step = step + 1
         
     return df
 
@@ -95,9 +93,9 @@ start = pd.datetime(2015, 5, 16, 0)
 end = pd.datetime(2016, 5, 16, 0)
 dt = '3H'
 dt_sec = pd.Timedelta(dt).total_seconds()
-rep = 20
+rep = 50
 rep_end = start.replace(year=start.year + rep)
-slr = 0.003
+slr = 1
 
 tides = read_data(tides_file, start, end, dt)
 tides_rep = rep_series(tides, start, end)
@@ -109,12 +107,10 @@ ssc_file = './data/processed/ssc_by_week.csv'
 
 ssc_by_week = pd.read_csv(ssc_file, index_col=0)
 
-
-
 # %% Run sediment model
 
 df = run_model(tides=tides_rep_with_slr, gs=0.03, rho=1100, dP=0, dO=0, dM=0.002, A=0.7, z0=0.65)
-feather.write_dataframe(df, './data/interim/base')
+feather.write_dataframe(df, './data/interim/longrun')
 
 
 # %%
@@ -132,5 +128,3 @@ plt.ylabel("Height above Mean Water Level (m)")
 plt.xlim(start + pd.Timedelta(days=1326), rep_end + pd.Timedelta(days=1326))
 plt.savefig('fig.jpg', dpi=1000)
 plt.show()
-
-#%%
