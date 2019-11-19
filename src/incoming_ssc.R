@@ -43,8 +43,8 @@ tides$Estimated.Pressure = predict(mod, newdata=tides$Datetime)
 window_size = 3 # in hours
 
 high_tides = tides %>%
-  filter(Estimated.Pressure > lead(Estimated.Pressure) & Estimated.Pressure > lag(Estimated.Pressure)) %>%
-  mutate(high_tide = Estimated.Pressure) %>%
+  filter(h > lead(h) & h > lag(h)) %>%
+  mutate(high_tide = h) %>%
   mutate(high_low_cycle = "high")
 
 low_tides = tides %>%
