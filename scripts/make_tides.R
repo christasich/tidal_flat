@@ -42,3 +42,10 @@ tides$pressure = predict(mod, newdata=index)
 tides$pressure = tides$pressure + sl_vec
 
 write_feather(tides,'./data/interim/tides.feather')
+
+pdata = read.csv("out.csv")
+
+library(akima)
+library(fields)
+s = interp(pdata$ssc, pdata$slr, pdata$inundation_days)
+image.plot(s)
