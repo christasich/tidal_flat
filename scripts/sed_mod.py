@@ -2,6 +2,7 @@
 import pandas as pd
 import numpy as np
 import os
+import subprocess
 import feather
 from tqdm import tqdm
 
@@ -94,21 +95,17 @@ A = 0.7
 dP = 0
 dO = 0
 dM = 0.002
+run_length = 20
+dt = '3 hour'
+slr = 0.003
 
 #%% Load Data
 
 # Load Tides
-# tides_file = './data/processed/p32_tides.csv'
 
-# start = pd.datetime(2015, 5, 16, 0)
-# end = pd.datetime(2016, 5, 16, 0)
-#dt_sec = pd.Timedelta(dt).total_seconds()
-# rep = num_years
-# rep_end = start.replace(year=start.year + rep)
-
-# tides = read_data(tides_file, start, end, dt)
-# tides_rep = rep_series(tides, start, end)
-# tides_rep_with_slr = apply_linear_slr(tides_rep, slr)
+subprocess.run(["C:\\Program Files\\R\\R-3.6.1\\bin\\Rscript.exe", 
+    "C:\\Projects\\tidal_flat_0d\\scripts\\make_tides.R", 
+    str(run_length), str(dt), str(slr)])
 
 tides = feather.read_dataframe('./data/interim/tides.feather')
 tides = tides.set_index('Datetime')

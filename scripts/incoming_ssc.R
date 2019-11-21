@@ -8,7 +8,6 @@ library(xts)
 # Set working dir
 setwd("C:/Projects/tidal_flat_0d")
 
-
 # Read data from csv
 pressure = read.csv("data/interim/sutarkhali_pressure.csv")
 ssc = read.csv("data/interim/sutarkhali_ssc.csv")

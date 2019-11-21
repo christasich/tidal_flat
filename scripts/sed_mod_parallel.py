@@ -9,7 +9,6 @@ import itertools
 
 # %% Functions
 
-
 def read_data(file, start, end, dt):
     def parser(x):
         return pd.datetime.strptime(x, '%d-%b-%Y %H:%M:%S')

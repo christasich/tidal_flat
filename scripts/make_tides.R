@@ -2,12 +2,11 @@ library(lubridate)
 library(tidyverse)
 library(tsibble)
 library(oce)
-library(gridExtra)
-library(xts)
 library(feather)
 
 # Set working dir
 setwd("C:/Projects/tidal_flat_0d")
+args<-commandArgs(TRUE)
 
 # Read data from csv
 pressure = read.csv("data/interim/sutarkhali_pressure.csv")
@@ -24,11 +23,11 @@ pressure = pressure %>%
 tides.sl = as.sealevel(elevation = pressure$Pressure, time = pressure$Datetime)
 mod = tidem(t = tides.sl)
 
-run_length = 50 #years
-dt = "3 hours"
-index = seq.POSIXt(pressure$Datetime[1], pressure$Datetime[1] + years(run_length), by = dt)
+run_length = as.numeric(args[1]) #years
+dt = args[2]
+slr = as.numeric(args[3])
 
-slr = .003
+index = seq.POSIXt(pressure$Datetime[1], pressure$Datetime[1] + years(run_length), by = dt)
 end_sl = run_length * slr
 sl_vec = seq(0, end_sl, length.out = length(index))
 
@@ -41,11 +40,4 @@ tides$pressure = predict(mod, newdata=index)
 
 tides$pressure = tides$pressure + sl_vec
 
-write_feather(tides,'./data/interim/tides.feather')
-
-pdata = read.csv("out.csv")
-
-library(akima)
-library(fields)
-s = interp(pdata$ssc, pdata$slr, pdata$inundation_days)
-image.plot(s)
+write_feather(tides,sprintf('./data/interim/feather/tides_%s_slr', slr))
