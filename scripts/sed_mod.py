@@ -107,7 +107,7 @@ subprocess.run(["C:\\Program Files\\R\\R-3.6.1\\bin\\Rscript.exe",
     "C:\\Projects\\tidal_flat_0d\\scripts\\make_tides.R", 
     str(run_length), str(dt), str(slr)])
 
-tides = feather.read_dataframe('./data/interim/tides.feather')
+tides = feather.read_dataframe('./data/interim/feather/tides/tides_{0}_slr'.format(slr))
 tides = tides.set_index('Datetime')
 
 # Load weeksly ssc
@@ -117,4 +117,6 @@ ssc_by_week = pd.read_csv(ssc_file, index_col=0) * ssc_factor
 # %% Run sediment model
 df = run_model(tides=tides, gs=gs, rho=rho, dP=dP, dO=dO, dM=dM, A=A, z0=z0)
 df = df.reset_index()
-feather.write_dataframe(df, './data/interim/{0}.feather'.format(model_run))
+feather.write_dataframe(df, './data/interim/feather/model_runs/{0}'.format(model_run))
+
+# %%
