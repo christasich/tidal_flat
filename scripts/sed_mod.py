@@ -5,6 +5,9 @@ import os
 import subprocess
 import feather
 from tqdm import tqdm
+import multiprocessing as mp
+import itertools
+import inspect
 
 # %% Functions
 
@@ -34,7 +37,19 @@ def apply_linear_slr(df, rate_slr):
     return df + slr_values
 
 
+def make_tides(run_length, dt, slr):
+    Rscript = "C:\\Program Files\\R\\R-3.6.1\\bin\\Rscript.exe"
+    make_tides = "C:\\Projects\\tidal_flat_0d\\scripts\\make_tides.R"
+    subprocess.run([Rscript, make_tides, str(run_length), str(dt), '%.3f' % slr])
+    
+    tides = feather.read_dataframe('./data/interim/feather/tides/tides.{0}_slr'.format('%.3f' % slr))
+    tides = tides.set_index('Datetime')
+    
+    return tides
+
+
 def calc_c0(h, dh, z, A, timestamp):
+    global ssc_by_week
     week = timestamp.week
     ssc = ssc_by_week.loc[week].values[0]
     if (h > z and dh > 0):
@@ -61,6 +76,7 @@ def calc_z(z_min_1, dz_min_1, dO, dP):
 
 
 def run_model(tides, gs, rho, dP, dO, dM, A, z0):
+    global ssc_by_week
     dt = tides.index[1] - tides.index[0]
     dt_sec = dt.total_seconds()
     ws = ((gs / 1000) ** 2 * 1650 * 9.8) / 0.018
@@ -71,52 +87,104 @@ def run_model(tides, gs, rho, dP, dO, dM, A, z0):
     df.iloc[:, 5][0:2] = z0
     df.loc[:, 'h'] = tides.pressure
     df.loc[:, 'dh'] = df.loc[:, 'h'].diff() / dt_sec
+    df.loc[:, 'inundated'] = 0
 
     for t in tqdm(tides.index[1:], total=len(tides.index[1:]), unit='steps'):
         t_min_1 = t - dt
         df.loc[t, 'z'] = calc_z(df.at[t_min_1, 'z'], df.at[t_min_1, 'dz'], 0, 0)
-        df.loc[t, 'C0'] = calc_c0(
-            df.at[t, 'h'], df.at[t, 'dh'], df.at[t, 'z'], A, t)
+        df.loc[t, 'C0'] = calc_c0(df.at[t, 'h'], df.at[t, 'dh'], df.at[t, 'z'], A, t)
         df.loc[t, 'C'] = calc_c(df.at[t, 'C0'], df.at[t, 'h'], df.at[t_min_1, 'h'],
                                 df.at[t, 'dh'], df.at[t_min_1, 'C'], df.at[t, 'z'], ws, dt_sec)
         df.loc[t, 'dz'] = calc_dz(df.at[t, 'C'], ws, rho, dt_sec)
+        if df.loc[t, 'C0'] != 0:
+            df.loc[t, 'inundated'] = 1
         
-    return df
+    hours_inundated = (np.sum(df['inundated']) * dt).astype('timedelta64[h]').astype(int)
+    final_elevation = df.iloc[[-1]].z.values[0]
+        
+    return df, hours_inundated, final_elevation
+
+def make_combos(run_length, dt, slr, ssc_factor, gs, rho, dP, dO, dM, A, z0):
+    args = inspect.getfullargspec(make_combos).args
+    multi_args = []
+    for arg in args:
+        if isinstance(eval(arg), (list, tuple, np.ndarray)):
+            multi_args.append(arg)
+    single_args = list(set(args) - set(multi_args))
+    dict1 = [{'{0}'.format(j) : eval(j)} for j in single_args]
+    dict2 = [dict(zip(multi_args, i)) for i in itertools.product(*[eval(x) for x in multi_args])]
+    for entry2 in dict2:
+        for entry1 in dict1:
+            entry2.update(entry1)
+
+    return dict2
 
 
-#%% Set model paramters
+def parallel_parser(in_data):
+    global ssc_by_week
+    
+    # make tides
+    run_length = in_data['run_length']
+    dt = in_data['dt']
+    slr = in_data['slr']
+    
+    tides = make_tides(run_length, dt, slr)
+    
+    # Load weeksly ssc
+    ssc_factor = in_data['ssc_factor']
+    
+    ssc_file = './data/processed/ssc_by_week.csv'
+    ssc_by_week = pd.read_csv(ssc_file, index_col=0) * ssc_factor
+    
+    # run model
+    
+    gs = in_data['gs']
+    rho = in_data['rho']
+    dP = in_data['dP']
+    dO = in_data['dO']
+    dM = in_data['dM']
+    A = in_data['A']
+    z0 = in_data['z0']
+    
+    df, hours_inundated, final_elevation = run_model(tides, gs, rho, dP, dO, dM, A, z0)
+    out_name = '{0}_yr.slr_{1}.gs_{2}.rho_{3}.ssc_factor{4}.dP_{5}.dM_{6}.A_{7}.z0{8}'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
+    feather.write_dataframe(df, './data/interim/feather/model_runs/{0}'.format(out_name))
 
-model_run = 'base'
-z0 = 0.65
-gs = 0.03
-rho = 1400
-ssc_factor = 1
-A = 0.7
-dP = 0
-dO = 0
-dM = 0.002
-run_length = 20
-dt = '3 hour'
-slr = 0.003
+#%% Run model
 
-#%% Load Data
+if __name__ == '__main__':
+    
+    #%% Set model paramters
 
-# Load Tides
+    parallel = True
 
-subprocess.run(["C:\\Program Files\\R\\R-3.6.1\\bin\\Rscript.exe", 
-    "C:\\Projects\\tidal_flat_0d\\scripts\\make_tides.R", 
-    str(run_length), str(dt), str(slr)])
+    run_length = 5
+    dt = '3 hour'
+    slr = 0.003
+    ssc_factor = 1
+    gs = 0.03
+    rho = 1400
+    dP = 0
+    dO = 0
+    dM = 0.002
+    A = 0.7
+    z0 = 0.65
+    
+    
+    if parallel == True:
+        slr = np.arange(0.000, 0.031, 0.01)
+        ssc_factor = np.arange(0, 3.25, 1)
+        model_runs = make_combos(run_length, dt, slr, ssc_factor, gs, rho, dP, dO, dM, A, z0)
+        poolsize = 4
+        chunksize = 1
+        with mp.Pool(poolsize) as pool:
+            for result in pool.imap_unordered(parallel_parser, model_runs, chunksize=chunksize):
+                print('Done did work')
+    else:
+        tides = make_tides(run_length, dt, slr)
+        ssc_file = './data/processed/ssc_by_week.csv'
+        ssc_by_week = pd.read_csv(ssc_file, index_col=0) * ssc_factor
 
-tides = feather.read_dataframe('./data/interim/feather/tides/tides_{0}_slr'.format(slr))
-tides = tides.set_index('Datetime')
-
-# Load weeksly ssc
-ssc_file = './data/processed/ssc_by_week.csv'
-ssc_by_week = pd.read_csv(ssc_file, index_col=0) * ssc_factor
-
-# %% Run sediment model
-df = run_model(tides=tides, gs=gs, rho=rho, dP=dP, dO=dO, dM=dM, A=A, z0=z0)
-df = df.reset_index()
-feather.write_dataframe(df, './data/interim/feather/model_runs/{0}'.format(model_run))
-
-# %%
+        df, hours_inundated, final_elevation = run_model(tides, gs, rho, dP, dO, dM, A, z0)
+        out_name = '{0}_yr.slr_{1}.gs_{2}.rho_{3}.ssc_factor{4}.dP_{5}.dM_{6}.A_{7}.z0{8}'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
+        feather.write_dataframe(df, './data/interim/feather/model_runs/{0}'.format(out_name))
