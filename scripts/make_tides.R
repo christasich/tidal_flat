@@ -5,7 +5,7 @@ library(oce)
 library(feather)
 
 # Set working dir
-setwd("C:/Projects/tidal_flat_0d")
+setwd("C:/Users/tasichcm/Projects/tidal_flat_0d")
 args<-commandArgs(TRUE)
 
 # Read data from csv
