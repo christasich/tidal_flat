@@ -5,8 +5,8 @@ library(oce)
 library(feather)
 
 # Set working dir
-setwd("C:/Projects/tidal_flat_0d")
 args<-commandArgs(TRUE)
+setwd(args[4])
 
 # Read data from csv
 pressure = read.csv("data/interim/sutarkhali_pressure.csv")
@@ -40,4 +40,4 @@ tides$pressure = predict(mod, newdata=index)
 
 tides$pressure = tides$pressure + sl_vec
 
-write_feather(tides,sprintf('./data/interim/feather/tides/tides.%.3f_slr', slr))
+write_feather(tides,sprintf('./data/interim/tides/tides.%.3f_slr.feather', slr))

@@ -38,11 +38,11 @@ def apply_linear_slr(df, rate_slr):
 
 
 def make_tides(run_length, dt, slr):
-    Rscript = "C:\\Program Files\\R\\R-3.6.1\\bin\\Rscript.exe"
-    make_tides = "C:\\Projects\\tidal_flat_0d\\scripts\\make_tides.R"
-    subprocess.run([Rscript, make_tides, str(run_length), str(dt), '%.3f' % slr])
+    Rscript = "C:\\Program Files\\R\\R-3.6.2\\bin\\Rscript.exe"
+    make_tides = os.path.join(os.getcwd(),'scripts\make_tides.R')
+    subprocess.run([Rscript, make_tides, str(run_length), str(dt), '%.3f' % slr, os.getcwd()])
     
-    tides = feather.read_dataframe('./data/interim/feather/tides/tides.{0}_slr'.format('%.3f' % slr))
+    tides = feather.read_dataframe('./data/interim/tides/tides.{0}_slr.feather'.format('%.3f' % slr))
     tides = tides.set_index('Datetime')
     
     return tides
@@ -148,7 +148,7 @@ def parallel_parser(in_data):
     
     df, hours_inundated, final_elevation = run_model(tides, gs, rho, dP, dO, dM, A, z0)
     out_name = '{0}_yr.slr_{1}.gs_{2}.rho_{3}.ssc_factor{4}.dP_{5}.dM_{6}.A_{7}.z0{8}'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
-    feather.write_dataframe(df, './data/interim/feather/model_runs/{0}'.format(out_name))
+    feather.write_dataframe(df, './data/interim/results/{0}.feather'.format(out_name))
 
 #%% Run model
 
@@ -158,11 +158,11 @@ if __name__ == '__main__':
 
     parallel = True
 
-    run_length = 5
+    run_length = 1
     dt = '3 hour'
     slr = 0.003
     ssc_factor = 1
-    gs = 0.03
+    gs = 0.035
     rho = 1400
     dP = 0
     dO = 0
@@ -187,4 +187,4 @@ if __name__ == '__main__':
 
         df, hours_inundated, final_elevation = run_model(tides, gs, rho, dP, dO, dM, A, z0)
         out_name = '{0}_yr.slr_{1}.gs_{2}.rho_{3}.ssc_factor{4}.dP_{5}.dM_{6}.A_{7}.z0{8}'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
-        feather.write_dataframe(df, './data/interim/feather/model_runs/{0}'.format(out_name))
+        feather.write_dataframe(df, './data/interim/results/{0}.feather'.format(out_name))
