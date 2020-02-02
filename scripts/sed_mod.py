@@ -147,8 +147,8 @@ def parallel_parser(in_data):
     z0 = in_data['z0']
     
     df, hours_inundated, final_elevation = run_model(tides, gs, rho, dP, dO, dM, A, z0)
-    out_name = '{0}_yr.slr_{1}.gs_{2}.rho_{3}.ssc_factor{4}.dP_{5}.dM_{6}.A_{7}.z0{8}'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
-    feather.write_dataframe(df, './data/interim/results/{0}.feather'.format(out_name))
+    out_name = 'yr_{0}-slr_{1}-gs_{2}-rho_{3}-sscfactor_{4}-dP_{5}-dM_{6}-A_{7}-z0_{8}.feather'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
+    feather.write_dataframe(df.reset_index(), './data/interim/results/{0}.feather'.format(out_name))
 
 #%% Run model
 
@@ -158,8 +158,8 @@ if __name__ == '__main__':
 
     parallel = True
 
-    run_length = 1
-    dt = '3 hour'
+    run_length = 20
+    dt = '1 hour'
     slr = 0.003
     ssc_factor = 1
     gs = 0.035
@@ -172,10 +172,10 @@ if __name__ == '__main__':
     
     
     if parallel == True:
-        slr = np.arange(0.000, 0.031, 0.01)
-        ssc_factor = np.arange(0, 3.25, 1)
+        slr = np.round(np.arange(0.000, 0.031, 0.001), 3)
+        ssc_factor = np.round(np.arange(0, 3.25, 0.25), 2)
         model_runs = make_combos(run_length, dt, slr, ssc_factor, gs, rho, dP, dO, dM, A, z0)
-        poolsize = 4
+        poolsize = 32
         chunksize = 1
         with mp.Pool(poolsize) as pool:
             for result in pool.imap_unordered(parallel_parser, model_runs, chunksize=chunksize):
@@ -186,5 +186,5 @@ if __name__ == '__main__':
         ssc_by_week = pd.read_csv(ssc_file, index_col=0) * ssc_factor
 
         df, hours_inundated, final_elevation = run_model(tides, gs, rho, dP, dO, dM, A, z0)
-        out_name = '{0}_yr.slr_{1}.gs_{2}.rho_{3}.ssc_factor{4}.dP_{5}.dM_{6}.A_{7}.z0{8}'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
-        feather.write_dataframe(df, './data/interim/results/{0}.feather'.format(out_name))
+        out_name = 'yr_{0}-slr_{1}-gs_{2}-rho_{3}-sscfactor_{4}-dP_{5}-dM_{6}-A_{7}-z0_{8}.feather'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
+        feather.write_dataframe(df.reset_index(), './data/interim/results/{0}.feather'.format(out_name))
