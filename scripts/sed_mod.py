@@ -8,6 +8,7 @@ from tqdm import tqdm
 import multiprocessing as mp
 import itertools
 import inspect
+import shutil
 
 # %% Functions
 
@@ -75,7 +76,7 @@ def calc_z(z_min_1, dz_min_1, dO, dP):
     return z_min_1 + dz_min_1 + dO - dP
 
 
-def run_model(tides, gs, rho, dP, dO, dM, A, z0):
+def run_model(tides, gs, rho, dP, dO, dM, A, z0, n=0):
     global ssc_by_week
     dt = tides.index[1] - tides.index[0]
     dt_sec = dt.total_seconds()
@@ -89,7 +90,7 @@ def run_model(tides, gs, rho, dP, dO, dM, A, z0):
     df.loc[:, 'dh'] = df.loc[:, 'h'].diff() / dt_sec
     df.loc[:, 'inundated'] = 0
 
-    for t in tqdm(tides.index[1:], total=len(tides.index[1:]), unit='steps'):
+    for t in tqdm(tides.index[1:], total=len(tides.index[1:]), unit='steps', position=n):
         t_min_1 = t - dt
         df.loc[t, 'z'] = calc_z(df.at[t_min_1, 'z'], df.at[t_min_1, 'dz'], 0, 0)
         df.loc[t, 'C0'] = calc_c0(df.at[t, 'h'], df.at[t, 'dh'], df.at[t, 'z'], A, t)
@@ -107,6 +108,7 @@ def run_model(tides, gs, rho, dP, dO, dM, A, z0):
 def make_combos(run_length, dt, slr, ssc_factor, gs, rho, dP, dO, dM, A, z0):
     args = inspect.getfullargspec(make_combos).args
     multi_args = []
+    n = 0
     for arg in args:
         if isinstance(eval(arg), (list, tuple, np.ndarray)):
             multi_args.append(arg)
@@ -116,12 +118,16 @@ def make_combos(run_length, dt, slr, ssc_factor, gs, rho, dP, dO, dM, A, z0):
     for entry2 in dict2:
         for entry1 in dict1:
             entry2.update(entry1)
+        entry2.update({'n' : n})
+        n = n + 1
 
     return dict2
 
 
 def parallel_parser(in_data):
     global ssc_by_week
+
+    n = in_data['n']
     
     # make tides
     run_length = in_data['run_length']
@@ -150,13 +156,31 @@ def parallel_parser(in_data):
     out_name = 'yr_{0}-slr_{1}-gs_{2}-rho_{3}-sscfactor_{4}-dP_{5}-dM_{6}-A_{7}-z0_{8}.feather'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
     feather.write_dataframe(df.reset_index(), './data/interim/results/{0}.feather'.format(out_name))
 
+    return n
+
 #%% Run model
 
 if __name__ == '__main__':
-    
-    #%% Set model paramters
 
+    # Clean up
+
+    reset = True
     parallel = True
+    
+    wdir = os.getcwd()
+
+    if reset == True:
+        try:
+            shutil.rmtree(os.path.join(wdir, 'data/interim/feather'))
+        except:
+            pass
+
+    if not os.path.exists(os.path.join(wdir, 'data/interim/feather')):
+        os.mkdir(os.path.join(wdir, 'data/interim/feather'))
+        os.mkdir(os.path.join(wdir, 'data/interim/feather/model_runs'))
+        os.mkdir(os.path.join(wdir, 'data/interim/feather/tides'))
+
+    #%% Set model paramters
 
     run_length = 20
     dt = '1 hour'
@@ -178,8 +202,10 @@ if __name__ == '__main__':
         poolsize = 32
         chunksize = 1
         with mp.Pool(poolsize) as pool:
+            num = 1
             for result in pool.imap_unordered(parallel_parser, model_runs, chunksize=chunksize):
-                print('Done did work')
+                print('Finished model run {0} out of {1}'.format(num, len(model_runs)))
+                num = num + 1
     else:
         tides = make_tides(run_length, dt, slr)
         ssc_file = './data/processed/ssc_by_week.csv'
