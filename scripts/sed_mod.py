@@ -2,6 +2,7 @@
 import pandas as pd
 import numpy as np
 import os
+import sys
 import subprocess
 import feather
 from tqdm import tqdm
@@ -12,6 +13,8 @@ import shutil
 
 # %% Functions
 
+if sys.platform == 'linux':
+    os.chdir('/home/chris/projects/tidal_flat_0d/')
 
 def read_data(file, start, end, dt):
     def parser(x):
@@ -39,11 +42,12 @@ def apply_linear_slr(df, rate_slr):
 
 
 def make_tides(run_length, dt, slr):
-    Rscript = "C:\\Program Files\\R\\R-3.6.2\\bin\\Rscript.exe"
-    make_tides = os.path.join(os.getcwd(),'scripts\make_tides.R')
-    subprocess.run([Rscript, make_tides, str(run_length), str(dt), '%.3f' % slr, os.getcwd()])
+    if not os.path.isfile('./data/interim/tides/tides-{0}_slr.feather'.format('%.4f' % slr)):
+        Rscript = "Rscript"
+        path = os.path.join(os.getcwd(),'scripts/make_tides.R')
+        subprocess.run([Rscript, path, str(run_length), str(dt), '%.4f' % slr, os.getcwd()])
     
-    tides = feather.read_dataframe('./data/interim/tides/tides.{0}_slr.feather'.format('%.3f' % slr))
+    tides = feather.read_dataframe('./data/interim/tides/tides-{0}_slr.feather'.format('%.4f' % slr))
     tides = tides.set_index('Datetime')
     
     return tides
@@ -154,7 +158,7 @@ def parallel_parser(in_data):
     
     df, hours_inundated, final_elevation = run_model(tides, gs, rho, dP, dO, dM, A, z0)
     out_name = 'yr_{0}-slr_{1}-gs_{2}-rho_{3}-sscfactor_{4}-dP_{5}-dM_{6}-A_{7}-z0_{8}.feather'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
-    feather.write_dataframe(df.reset_index(), './data/interim/results/{0}.feather'.format(out_name))
+    feather.write_dataframe(df.reset_index(), './data/interim/results/{0}'.format(out_name))
 
     return n
 
@@ -163,22 +167,8 @@ def parallel_parser(in_data):
 if __name__ == '__main__':
 
     # Clean up
-
-    reset = True
-    parallel = True
     
-    wdir = os.getcwd()
-
-    if reset == True:
-        try:
-            shutil.rmtree(os.path.join(wdir, 'data/interim/feather'))
-        except:
-            pass
-
-    if not os.path.exists(os.path.join(wdir, 'data/interim/feather')):
-        os.mkdir(os.path.join(wdir, 'data/interim/feather'))
-        os.mkdir(os.path.join(wdir, 'data/interim/feather/model_runs'))
-        os.mkdir(os.path.join(wdir, 'data/interim/feather/tides'))
+    parallel = True
 
     #%% Set model paramters
 
@@ -196,10 +186,10 @@ if __name__ == '__main__':
     
     
     if parallel == True:
-        slr = np.round(np.arange(0.000, 0.031, 0.001), 3)
-        ssc_factor = np.round(np.arange(0, 3.25, 0.25), 2)
+        slr = np.round(np.arange(0.000, 0.031, 0.0025), 4)
+        ssc_factor = np.round(np.arange(0.25, 3.25, 0.25), 2)
         model_runs = make_combos(run_length, dt, slr, ssc_factor, gs, rho, dP, dO, dM, A, z0)
-        poolsize = 32
+        poolsize = 60
         chunksize = 1
         with mp.Pool(poolsize) as pool:
             num = 1
