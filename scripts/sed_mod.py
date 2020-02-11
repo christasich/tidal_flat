@@ -42,12 +42,12 @@ def apply_linear_slr(df, rate_slr):
 
 
 def make_tides(run_length, dt, slr):
-    if not os.path.isfile('./data/interim/tides/tides-{0}_slr.feather'.format('%.4f' % slr)):
+    if not os.path.isfile('./data/interim/tides/tides-yr_{0}-dt_{1}-slr_{2}.feather'.format(run_length, int(pd.to_timedelta(dt).total_seconds()/60/60), '%.4f' % slr)):
         Rscript = "Rscript"
         path = os.path.join(os.getcwd(),'scripts/make_tides.R')
         subprocess.run([Rscript, path, str(run_length), str(dt), '%.4f' % slr, os.getcwd()])
     
-    tides = feather.read_dataframe('./data/interim/tides/tides-{0}_slr.feather'.format('%.4f' % slr))
+    tides = feather.read_dataframe('./data/interim/tides/tides-yr_{0}-dt_{1}-slr_{2}.feather'.format(run_length, int(pd.to_timedelta(dt).total_seconds()/60/60), '%.4f' % slr))
     tides = tides.set_index('Datetime')
     
     return tides
@@ -93,6 +93,7 @@ def run_model(tides, gs, rho, dP, dO, dM, A, z0, n=0):
     df.loc[:, 'h'] = tides.pressure
     df.loc[:, 'dh'] = df.loc[:, 'h'].diff() / dt_sec
     df.loc[:, 'inundated'] = 0
+    df.loc[:, 'inundation_depth'] = 0
 
     for t in tqdm(tides.index[1:], total=len(tides.index[1:]), unit='steps', position=n):
         t_min_1 = t - dt
@@ -101,6 +102,8 @@ def run_model(tides, gs, rho, dP, dO, dM, A, z0, n=0):
         df.loc[t, 'C'] = calc_c(df.at[t, 'C0'], df.at[t, 'h'], df.at[t_min_1, 'h'],
                                 df.at[t, 'dh'], df.at[t_min_1, 'C'], df.at[t, 'z'], ws, dt_sec)
         df.loc[t, 'dz'] = calc_dz(df.at[t, 'C'], ws, rho, dt_sec)
+        if df.at[t, 'h'] - df.at[t, 'z'] >= 0:
+            df.loc[t, 'inundation_depth'] = df.at[t, 'h'] - df.at[t, 'z']
         if df.loc[t, 'C0'] != 0:
             df.loc[t, 'inundated'] = 1
         
@@ -174,22 +177,24 @@ if __name__ == '__main__':
 
     run_length = 20
     dt = '1 hour'
-    slr = 0.003
+    slr = 0.002
     ssc_factor = 1
     gs = 0.035
     rho = 1400
     dP = 0
     dO = 0
-    dM = 0.002
+    dM = 0.003
     A = 0.7
     z0 = 0.65
     
     
     if parallel == True:
-        slr = np.round(np.arange(0.000, 0.031, 0.0025), 4)
-        ssc_factor = np.round(np.arange(0.25, 3.25, 0.25), 2)
+        slr = np.round(np.arange(0.000, 0.031, 0.001), 3)
+        ssc_factor = np.round(np.arange(0.1, 3.1, 0.1), 1)
+        # x = np.arange(0, 21, 1)
+        # ssc_factor = 0.1 * np.exp( np.log(3.0 / 0.1) * x)
         model_runs = make_combos(run_length, dt, slr, ssc_factor, gs, rho, dP, dO, dM, A, z0)
-        poolsize = 60
+        poolsize = 12
         chunksize = 1
         with mp.Pool(poolsize) as pool:
             num = 1
@@ -203,4 +208,4 @@ if __name__ == '__main__':
 
         df, hours_inundated, final_elevation = run_model(tides, gs, rho, dP, dO, dM, A, z0)
         out_name = 'yr_{0}-slr_{1}-gs_{2}-rho_{3}-sscfactor_{4}-dP_{5}-dM_{6}-A_{7}-z0_{8}.feather'.format(run_length, slr, gs, rho, ssc_factor, dP, dM, A, z0)
-        feather.write_dataframe(df.reset_index(), './data/interim/results/{0}.feather'.format(out_name))
+        feather.write_dataframe(df.reset_index(), './data/interim/results/{0}'.format(out_name))

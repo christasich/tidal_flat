@@ -40,6 +40,6 @@ tides$pressure = predict(mod, newdata=index)
 
 tides$pressure = tides$pressure + sl_vec
 
-write_feather(tides,sprintf('./data/interim/tides/tides-%.4f_slr.feather', slr))
+write_feather(tides,sprintf('./data/interim/tides/tides-yr_%.0f-dt_%.0f-slr_%.4f.feather', run_length, as.numeric(as.duration(dt), 'hours'), slr))
 
 print('Tides made')

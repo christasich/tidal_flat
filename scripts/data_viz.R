@@ -1,17 +1,16 @@
 library(feather)
 library(ggplot2)
+library(tidyverse)
 
 file = dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(file)
 setwd('..')
 
-results_path = file.path(getwd(), 'data', 'interim', 'results')
+results = read.table('./scripts/output.csv', header = TRUE, sep = ',') %>%
+  filter(sscfactor <= 3 & sscfactor >= 0 & slr <=0.01)
 
-results_path = 'C:\\Users\\chris\\Downloads\\model_runs'
-
-files = list.files(results_path, full.names = TRUE)
-
-data = read_feather(files[3])
-
-ggplot() +
-  geom_line(data = data, aes(x = seq(1, length(z)), y = z))
+ggplot(results, aes(x=slr, y=sscfactor, z=inundation.hours, fill=inundation.hours)) +
+  geom_raster(interpolate = F, na.rm = TRUE) +
+  scale_fill_viridis_c(option='plasma') +
+  scale_y_log10() +
+  geom_contour(bins=10, color='white')
