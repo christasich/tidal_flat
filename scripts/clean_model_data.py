@@ -15,6 +15,7 @@ feather_files = [os.path.abspath(os.path.join(feather_path, f)) for f in feather
 
 # %%
 
+
 results = []
 for file in feather_files:
     
@@ -26,16 +27,22 @@ for file in feather_files:
         var_name = var.split('_')[0]
         var_val = var.split('_')[1]
         dict[var_name] = var_val
-        
+    
+    end_slr = int(dict['yr']) * float(dict['slr'])
+    MHW = np.linspace(0, end_slr, len(data.index)) + 1.67
     data = feather.read_dataframe(file)
     data = data.set_index('Datetime')
+    
+    recovery_bool = data.loc[:, 'z'] >= MHW
+    if recovery_bool.all() == True:
+        recovery_time = None
+    else:
+        recovery_index = np.argwhere(np.diff(recovery_bool)).squeeze()
+        recovery_date = data.index[int(np.mean(recovery_index))]
+        recovery_time = (recovery_date - data.index[0]).total_seconds()
+    
     dict['end_z'] = data.z[-1]
-    start = data.index[-1] - timedelta(days=365)
-    end = data.index[-1]
-    dt = (data.index[1]-data.index[0]).total_seconds() / 60 / 60
-    dict['in_cum_hours'] = np.sum(data.inundated[start:end])
-    dict['in_cum_depth'] = np.sum(data.inundation_depth[start:end])
-    dict['in_max_depth'] = np.max(data.inundation_depth[start:end])
+    dict['recovery_time'] = recovery_time
     
     results.append(dict)
 
@@ -43,8 +50,5 @@ df = pd.DataFrame.from_dict(results)
 base = df.loc[df['z0'] == '2']
 results_df = df.loc[df['z0'] != '2']
     
-results_df.loc[:,'in_anomaly_hour'] = results_df['in_cum_hours'] - base['in_cum_hours'].values
-results_df.loc[:,'in_anomaly_depth'] = results_df['in_cum_depth'] - base['in_cum_depth'].values
-results_df.loc[:,'in_anomaly_max_depth'] = results_df['in_max_depth'] - base['in_max_depth'].values
 results_df = results_df.sort_values(by=['slr', 'sscfactor'], ignore_index=True)
 results_df.to_csv('../data/interim/ssc_v_slr_runs.csv', index=False)
