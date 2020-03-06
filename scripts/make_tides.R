@@ -12,10 +12,11 @@ setwd(args[4])
 pressure = read.csv("data/interim/sutarkhali_pressure.csv")
 
 # Filter NaNs and normalize by mean
+
 pressure = pressure %>%
   filter(Pressure != "NaN") %>%
   filter(Datetime != "NA") %>%
-  mutate(Pressure = Pressure - mean(Pressure)) %>%
+  mutate(Pressure = Pressure - mean(Pressure) - 0.29) %>%
   mutate(Datetime = mdy_hms(Datetime, tz = "Asia/Dhaka")) %>%
   as_tsibble(index = Datetime)
 

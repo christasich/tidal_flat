@@ -29,12 +29,12 @@ for file in feather_files:
         dict[var_name] = var_val
     
     end_slr = int(dict['yr']) * float(dict['slr'])
-    MHW = np.linspace(0, end_slr, len(data.index)) + 1.67
     data = feather.read_dataframe(file)
     data = data.set_index('Datetime')
+    MHW = np.linspace(0, end_slr, len(data.index)) + 1.5
     
     recovery_bool = data.loc[:, 'z'] >= MHW
-    if recovery_bool.all() == True:
+    if recovery_bool.all() == True or recovery_bool[-1] == False:
         recovery_time = None
     else:
         recovery_index = np.argwhere(np.diff(recovery_bool)).squeeze()
