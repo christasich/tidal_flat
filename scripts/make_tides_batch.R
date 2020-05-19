@@ -1,5 +1,3 @@
-library.path <- .libPaths("/home/chris/R/x86_64-pc-linux-gnu-library/3.6")
-library("tsibble", lib.loc = library.path)
 library(lubridate)
 library(tidyverse)
 library(tsibble)
@@ -38,7 +36,7 @@ sl_vec = seq(0, end_sl, length.out = length(index))
 tides = tibble(Datetime = index) %>%
   as_tsibble(index = Datetime) %>%
   arrange(Datetime)
-  
+
 tides$pressure = predict(mod, newdata=index)
 
 tides$pressure = tides$pressure + sl_vec
