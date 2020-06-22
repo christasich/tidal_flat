@@ -9,7 +9,7 @@ args<-commandArgs(TRUE)
 setwd(args[4])
 
 # Read data from csv
-pressure = read.csv("data/interim/sutarkhali_pressure.csv")
+pressure = read.csv("../../interim/sutarkhali_pressure.csv")
 
 # Filter NaNs and normalize by mean
 

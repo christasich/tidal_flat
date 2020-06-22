@@ -11,15 +11,15 @@ args<-commandArgs(TRUE)
 setwd(args[4])
 
 # Read data from csv
-pressure = read.csv("data/interim/sutarkhali_pressure.csv")
+pressure = read.csv("../../interim/sutarkhali_pressure.csv")
 
 # Filter NaNs and normalize by mean
 
 pressure = pressure %>%
   filter(Pressure != "NaN") %>%
-  filter(Datetime != "NA") %>%
+  filter(Datetime != "NaT") %>%
   mutate(Pressure = Pressure - mean(Pressure) - 0.29) %>%
-  mutate(Datetime = mdy_hms(Datetime, tz = "Asia/Dhaka")) %>%
+  mutate(Datetime = dmy_hms(Datetime, tz = "Asia/Dhaka")) %>%
   as_tsibble(index = Datetime)
 
 
@@ -43,6 +43,6 @@ tides$pressure = predict(mod, newdata=index)
 
 tides$pressure = tides$pressure + sl_vec
 
-write_feather(tides,sprintf('./data/interim/tides/tides-yr_%.0f-dt_%.0f-slr_%.4f.feather', run_length, as.numeric(as.duration(dt), 'minutes'), slr))
+write_feather(tides,sprintf('../../interim/tides/tides-yr_%.0f-dt_%.0f-slr_%.4f.feather', run_length, as.numeric(as.duration(dt), 'minutes'), slr))
 
 print('Tides made')
