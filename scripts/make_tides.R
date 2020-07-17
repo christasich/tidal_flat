@@ -1,4 +1,3 @@
-#library.path <- .libPaths("/home/chris/R/x86_64-pc-linux-gnu-library/3.6")
 library(tsibble)
 library(lubridate)
 library(tidyverse)
@@ -43,6 +42,6 @@ tides$pressure = predict(mod, newdata=index)
 
 tides$pressure = tides$pressure + sl_vec
 
-write_feather(tides,sprintf('../../interim/tides/tides-yr_%.0f-dt_%.0f-slr_%.4f.feather', run_length, as.numeric(as.duration(dt), 'minutes'), slr))
+write_feather(tides,sprintf('../../interim/tides/tides-yr_%.0f-dt_%.0f-slr_%.4f.feather', run_length, as.numeric(as.duration(dt), 'seconds'), slr))
 
 print('Tides made')
