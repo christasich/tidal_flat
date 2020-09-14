@@ -9,7 +9,7 @@ library(arrow)
 args<-commandArgs(TRUE)
 
 # Read data from csv
-pressure = read_feather(args[1])
+pressure = read_csv(args[1])
 
 
 tides.sl = as.sealevel(elevation = pressure$Pressure, time = pressure$Datetime)
@@ -28,3 +28,4 @@ tides$pressure = predict(mod, newdata=index)
 write_feather(tides, args[3])
 
 print('Tides made')
+
