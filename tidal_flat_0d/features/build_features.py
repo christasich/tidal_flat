@@ -1,6 +1,8 @@
 import feather
 from collections import namedtuple
 import inspect
+import logging
+
 
 def make_combos(**kwargs):
     '''
@@ -107,6 +109,7 @@ def load_tide(wdir, filename):
     fp = wdir / filename
     tides = feather.read_dataframe(fp)
     tides = tides.set_index("Datetime")
+    logging.info('Tides loaded!')
 
     return tides
 

@@ -1,73 +1,10 @@
-from collections import namedtuple
 import numpy as np
 import pandas as pd
-from tqdm.notebook import tqdm
-import inspect
+from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.integrate import solve_ivp
+import logging
+logger = logging.getLogger(__name__)
 
-
-def calc_conc(
-    bound_conc, tide_height, prev_tide_height, prev_conc, elev, prev_elev, settle_rate, timestep, method='CT'
-):
-    depth = tide_height - elev
-    prev_depth = prev_tide_height - prev_elev
-    change_in_depth = depth - prev_depth
-
-    # Checks
-    tide_above_platform = depth > 0
-    prev_tide_above_platform = prev_depth > 0
-    depth_stable = prev_depth >= 0.0015
-    tide_increasing = tide_height > prev_tide_height
-    settling_valid = settle_rate * prev_conc * timestep <= prev_depth * prev_conc
-
-    if settling_valid:
-        settled_amount = settle_rate * prev_conc * timestep
-    else:
-        settled_amount = prev_depth * prev_conc
-
-    if method == 'CT':
-
-        if tide_above_platform and depth_stable:
-            if tide_increasing:
-                conc = prev_conc - settled_amount / prev_depth + 1 / prev_depth * (bound_conc * change_in_depth - prev_conc * change_in_depth)
-                return conc
-            if not tide_increasing:
-                conc = prev_conc - settled_amount / prev_depth
-                return conc
-            else:
-                raise Exception('Tide not increasing or decreasing.')
-        if not tide_above_platform or not depth_stable:
-            conc = 0
-            return conc
-        else:
-            raise Exception('Error in tide_above_platform or depth_stable')
-
-    if method == 'JG':
-        if prev_tide_above_platform and tide_above_platform:
-            if tide_increasing:
-                conc = (prev_depth * prev_conc) / depth - settled_amount / depth + bound_conc * (1 - prev_depth / depth)
-                return conc
-            if not tide_increasing:
-                conc = (prev_depth * prev_conc) / depth - settled_amount / depth
-                return conc
-            else:
-                raise Exception('Tide not increasing or decreasing.')
-        elif not prev_tide_above_platform and tide_above_platform:
-            conc = bound_conc
-            return conc
-        if not tide_above_platform:
-            conc = 0
-            return conc
-        else:
-            raise Exception('Error in tide_above_platform or depth_stable')
-
-def accumulate_sediment(conc, settle_rate, timestep):
-    deposited_sediment = settle_rate * conc * timestep
-    return deposited_sediment
-
-
-def aggrade(start_elev, sediment, organic, compaction, subsidence):
-    elev = start_elev + sediment + organic - compaction - subsidence
-    return elev
 
 def stokes_settling(grain_dia, grain_den, fluid_den = 1000, fluid_visc = 0.001, g = 9.8):
     settle_rate = (
@@ -76,60 +13,84 @@ def stokes_settling(grain_dia, grain_den, fluid_den = 1000, fluid_visc = 0.001, 
     return settle_rate
 
 
-def simulate_elevation(params):
+def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0, init_conc=0, timestep=1, depth_cutoff=0.001, debug=False):
 
-    # Unpack params
-    index = params.index
+    def below_platform(t, y, *args):
+        depth = tide_spl(t) - (y[1] + depth_cutoff)
+        return depth
 
-    if isinstance(params.bound_conc, (int, float)):
-        bound_conc = np.full(len(index), params.bound_conc)
-    else:
-        bound_conc = params.bounc_conc
+    below_platform.terminal = True
+    below_platform.direction = -1
 
-    timestep = (index[1] - index[0]).total_seconds()
-    water_height = params.water_height
-    settle_rate = params.settle_rate
-    bulk_den = params.bulk_den
+    def solve_ode(t, y, *args):
+        
+        # set initial values for concentration and elevation
+        init_conc = y[0]
+        init_elev = y[1]
+        
+        # use spline function for tide height to set current water_height
+        water_height = tide_spl(t)
+        depth = water_height - init_elev #calculate current depth
 
-    organic_matter = params.organic_rate / 8760 / 60 / 60 * timestep
-    compaction = params.compaction_rate / 8760 / 60 / 60 * timestep
-    subsidence = params.subsidence_rate / 8760 / 60 / 60 * timestep
+        # use derivative of tide spline to get current gradient and set H
+        dhdt = dhdt_spl(t)
 
-    elev = np.zeros(len(index))
-    elev[0] = params.start_elev
+        if dhdt > 0:
+            H = 1
+        else:
+            H = 0
+        
+        delta_conc = - (settle_rate * init_conc) / depth - H / depth * (init_conc - bound_conc) * dhdt * timestep
+        delta_elev = settle_rate * (init_conc + delta_conc) / bulk_dens * timestep
 
-    elev_change = np.zeros(len(index))
-    conc = np.zeros(len(index))
-    deposited_sediment = np.zeros(len(index))
+        return [delta_conc, delta_elev]
 
-    counter = np.arange(1, len(index))
+    elev = init_elev
+    conc = init_conc
+    data = pd.Series(water_heights)
+    pos = 0
+    elevs = np.empty(0)
+    concs = np.empty(0)
+    times = np.empty(0)
+    inundations = 0
 
-    for t in tqdm(
-        counter,
-        total=len(index[1:]),
-        unit="steps",
-    ):
-        elev[t] = aggrade(elev[t - 1], elev_change[t - 1], organic_matter, compaction, subsidence)
-        conc[t] = calc_conc(
-            bound_conc[t],
-            water_height[t],
-            water_height[t - 1],
-            conc[t - 1],
-            elev[t],
-            elev[t - 1],
-            settle_rate,
-            timestep, method=params.conc_method
-        )
-        deposited_sediment[t] = accumulate_sediment(
-            conc[t], settle_rate, timestep
-        )
-        elev_change[t] = deposited_sediment[t] / bulk_den
+    while True:
+        remaining_data = data[pos:]
+        data_above_platform = remaining_data[remaining_data > (elev + depth_cutoff)]
+        
+        if len(data_above_platform) < 4:
+            break
 
-    data = pd.DataFrame(data={'elev': elev, 'water_height': water_height, 'bound_conc': bound_conc, 'conc': conc,'deposited_sediment': deposited_sediment, 'elev_change': elev_change}, index=index)
-    data['depth'] = data.water_height - data.elev
-    data.depth = np.where(data.depth < 0, 0, data.depth)
-    data['suspended_sediment'] = data.conc * data.depth
-    data['incoming_sediment'] = bound_conc * (data.depth - data.depth.shift(1))
-    data.incoming_sediment = np.where(data.incoming_sediment < 0, 0, data.incoming_sediment)
+        if len(np.where(np.diff(data_above_platform.index.values) != 1)[0]) == 0:
+            end = len(data_above_platform) - 1
+        else:
+            end = np.where(np.diff(data_above_platform.index.values) != 1)[0][0] + 1
+        
+        subset = data_above_platform[:end]
 
-    return data
+        if len(subset) < 4:
+            pos = subset.index.values[-1] + 1
+            continue
+
+        subset_water_height = subset.values
+        subset_index = subset.index.values
+
+        tide_spl = InterpolatedUnivariateSpline(subset_index, subset_water_height)
+        dhdt_spl = tide_spl.derivative()
+
+        t_span = [subset_index[0], subset_index[-1]]
+        result = solve_ivp(fun=solve_ode, t_span=t_span, y0=[conc, elev], events=below_platform,
+                               args=(bound_conc, settle_rate, bulk_dens, depth_cutoff, timestep), dense_output=True)
+        if result.status == -1:
+            print(result.message)
+            break
+        
+        times = np.concatenate((times, result.t))
+        concs = np.concatenate((concs, result.y[0]))
+        elevs = np.concatenate((elevs, result.y[1]))
+
+        elev = result.y[1][-1]
+        pos = subset.index.values[-1] + 1
+        inundations += 1
+
+    return [times, concs, elevs]
