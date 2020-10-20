@@ -2,6 +2,7 @@ import feather
 from collections import namedtuple
 import inspect
 import logging
+import pandas as pd
 
 
 def make_combos(**kwargs):
@@ -107,9 +108,10 @@ def load_tide(wdir, filename):
     and sets the index to the Datetime column.
     '''
     fp = wdir / filename
-    tides = feather.read_dataframe(fp)
-    tides = tides.set_index("Datetime")
-    logging.info('Tides loaded!')
+    data = feather.read_dataframe(fp)
+    vals = data.pressure.values
+    index = pd.DatetimeIndex(data.Datetime, freq='infer')
+    tides = pd.Series(data=vals, index=index)
 
     return tides
 
