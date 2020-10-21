@@ -99,9 +99,7 @@ def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0.0, in
     elev = init_elev
     conc = init_conc
     pos = 0
-    times = np.empty(0)
-    elevs = np.empty(0)
-    concs = np.empty(0)
+    results = ResultClass()
 
     # Progress through timeseries until all data is processed or an error is raised.
     while True:
@@ -145,15 +143,13 @@ def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0.0, in
             break
 
         # concatenate data
-        times = np.concatenate((times, result.t))
-        concs = np.concatenate((concs, result.y[0]))
-        elevs = np.concatenate((elevs, result.y[1]))
+        results = concatenate_results(results, result)
 
         # update params for next run
         elev = result.y[1][-1]
         pos = subset.index[-1] + 1
 
-    return ResultClass(times, [concs, elevs])
+    return results
 
 
 def run_model(tides_ts, settle_rate, bulk_dens, bound_conc, init_elev=0.0, years=1, slr=0, verbose=False):
