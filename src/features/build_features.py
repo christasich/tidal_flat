@@ -105,7 +105,7 @@ def make_tide(params):
 def load_tide(wdir, filename):
     '''
     Function that loads the tidal curve constructed by make_tides.R
-    and sets the index to the Datetime column.
+    and sets the index to the Datetime column and infers frequency.
     '''
     fp = wdir / filename
     data = feather.read_dataframe(fp)

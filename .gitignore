@@ -76,9 +76,7 @@ target/
 .ipynb_checkpoints/
 
 # exclude tides and results feather files
-/data/interim/tides/
-/data/processed/results/
-/notebooks/for_jonathan/
+*.feather
 
 # Mac OS-specific storage files
 .DS_Store
