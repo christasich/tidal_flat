@@ -12,15 +12,15 @@ def stokes_settling(grain_dia, grain_den, fluid_den = 1000.0, fluid_visc = 0.001
     Function that uses Stokes' Law to calculate the settling velocity of a spherical particle 
     falling through a fluid column.
     """
-    settle_rate = (
-        (2 / 9 * (grain_den - fluid_den) / fluid_visc) * g * (grain_dia / 2) ** 2
-    )
+    settle_rate = ((2 / 9 * (grain_den - fluid_den) / fluid_visc) * g * (grain_dia / 2) ** 2)
     return settle_rate
+
 
 class ResultClass:
     """
     Result class to imitate scipy.integrate.solve_ivp result for consistency
     """
+
     def __init__(self, t=None, y=None):
         if t is None and y is None:
             self.t = np.empty(0)
@@ -28,7 +28,8 @@ class ResultClass:
         else:
             self.t = t
             self.y = y
-        
+
+
 def concatenate_results(results, new_result):
     """
     Function that concatenates results and returns as one ResultClass.
@@ -36,7 +37,7 @@ def concatenate_results(results, new_result):
     times = np.concatenate((results.t, new_result.t))
     concs = np.concatenate((results.y[0], new_result.y[0]))
     elevs = np.concatenate((results.y[1], new_result.y[1]))
-    
+
     return ResultClass(times, [concs, elevs])
 
 
@@ -109,7 +110,7 @@ def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0.0, in
         # break when not enough data to make a spline
         if len(data_above_platform) < 4:
             break
-            
+
         pos_at_ends = data_above_platform.index[np.where(np.diff(data_above_platform.index) != timestep)]  # index values of end of remaining inundations
 
         # set end position of integration
@@ -163,13 +164,13 @@ def run_model(tides_ts, settle_rate, bulk_dens, bound_conc, init_elev=0.0, years
     tides_reindex = pd.timedelta_range(start=0, periods=len(tides_ts), freq=tides_ts.index.freq)
     tides = pd.Series(data=tides_ts.values, index=tides_reindex)
     data = tides
-    
+
     # initialize
     timestep = pd.Timedelta(tides_ts.index.freq).total_seconds()
     elev = init_elev
     results = ResultClass()
     tides = pd.Series()
-    
+
     # loop through a specified number of years
     for year in range(0, years):
         offset = (len(data) * timestep) * year  # offset to be add to tide index and result times depending on the year
@@ -181,11 +182,11 @@ def run_model(tides_ts, settle_rate, bulk_dens, bound_conc, init_elev=0.0, years
         # run model for one year and update time vector with offset
         result = aggrade(water_heights=data, settle_rate=settle_rate, bulk_dens=bulk_dens, bound_conc=bound_conc, init_elev=elev)
         result = ResultClass(result.t + offset, result.y)
-        
+
         # update params for next run
         elev = result.y[1][-1]
         data = data + slr
-        
+
         # concatenate results
         results = concatenate_results(results, result)
         tides = tides.append(data)
