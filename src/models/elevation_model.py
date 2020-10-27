@@ -66,7 +66,7 @@ def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0.0, in
 
         # use spline function for tide height to set current water_height
         water_height = tide_spline(t)
-        depth = water_height - init_elev #calculate current depth
+        depth = water_height - init_elev  #calculate current depth
 
         # use derivative of tide spline to get current gradient and set H
         tide_deriv = tide_spline_deriv(t)
@@ -134,7 +134,7 @@ def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0.0, in
         t_span = [subset.index[0], subset.index[-1]]
 
         # integrate over the current inundation cycle
-        result = solve_ivp(fun=solve_odes, t_span=t_span, y0=[conc, elev], 
+        result = solve_ivp(fun=solve_odes, t_span=t_span, y0=[conc, elev],
                            events=below_platform, args=(bound_conc, settle_rate, bulk_dens, min_depth))
 
         # raise exception if solver fails
