@@ -90,7 +90,7 @@ def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0.0, in
         vals = water_heights
         print('Couldn\'t infer timestep. Using {}s timestep.'.format(timestep))
     else:  # Set timestep to infered value.
-        timestep = pd.Timedelta(pd.infer_freq(water_heights.index)).total_seconds()
+        timestep = pd.tseries.frequencies.to_offset(pd.infer_freq(water_heights.index)).n
         vals = water_heights.values
 
     index = np.arange(0, len(water_heights) * timestep, timestep)  # make numeric index in seconds using timestep
@@ -166,7 +166,7 @@ def run_model(tides_ts, settle_rate, bulk_dens, bound_conc, init_elev=0.0, years
     data = tides
 
     # initialize
-    timestep = pd.Timedelta(tides_ts.index.freq).total_seconds()
+    timestep = tides_ts.index.freq.n
     elev = init_elev
     results = ResultClass()
     tides = pd.Series()
