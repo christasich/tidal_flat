@@ -41,7 +41,7 @@ def concatenate_results(results, new_result):
     return ResultClass(times, [concs, elevs])
 
 
-def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0.0, init_conc=0.0, timestep=1.0, min_depth=0.001):
+def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, organic_rate=0.0, compaction_rate=0.0, subsidence_rate=0.0, init_elev=0.0, init_conc=0.0, timestep=1.0, min_depth=0.001):
     '''
     Zero-dimensional model of elevation change on a tidal platform given an array of water heights, settling rate of the sediment,
     dry bulk density of the sediment, and boundary concentration of the tidal channel.
@@ -77,7 +77,7 @@ def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0.0, in
             H = 0
 
         delta_conc = - (settle_rate * init_conc) / depth - H / depth * (init_conc - bound_conc) * tide_deriv
-        delta_elev = settle_rate * (init_conc + delta_conc) / bulk_dens
+        delta_elev = settle_rate * (init_conc + delta_conc) / bulk_dens + organic_rate - compaction_rate - subsidence_rate
 
         return [delta_conc, delta_elev]
 
@@ -135,7 +135,7 @@ def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0.0, in
 
         # integrate over the current inundation cycle
         result = solve_ivp(fun=solve_odes, t_span=t_span, y0=[conc, elev],
-                           events=below_platform, args=(bound_conc, settle_rate, bulk_dens, min_depth))
+                           events=below_platform, args=(bound_conc, settle_rate, bulk_dens, min_depth, organic_rate, compaction_rate, subsidence_rate))
 
         # raise exception if solver fails
         if result.status == -1:
@@ -153,7 +153,7 @@ def aggrade(water_heights, settle_rate, bulk_dens, bound_conc, init_elev=0.0, in
     return results
 
 
-def run_model(tides_ts, settle_rate, bulk_dens, bound_conc, init_elev=0.0, years=1, slr=0, verbose=False):
+def run_model(tides_ts, settle_rate, bulk_dens, bound_conc, organic_rate=0.0, compaction_rate=0.0, subsidence_rate=0.0, init_elev=0.0, years=1, slr=0, verbose=False):
     '''
     Wrapper for the aggrade function that simulates multiple years of tidal inundation
     with linear sea level rise. Returns a pd.Series for the tides and a solve_ivp
@@ -180,7 +180,7 @@ def run_model(tides_ts, settle_rate, bulk_dens, bound_conc, init_elev=0.0, years
         data = pd.Series(data=data.values, index=data_index)
 
         # run model for one year and update time vector with offset
-        result = aggrade(water_heights=data, settle_rate=settle_rate, bulk_dens=bulk_dens, bound_conc=bound_conc, init_elev=elev)
+        result = aggrade(water_heights=data, settle_rate=settle_rate, bulk_dens=bulk_dens, bound_conc=bound_conc, organic_rate=organic_rate, compaction_rate=compaction_rate, subsidence_rate=subsidence_rate, init_elev=elev)
         result = ResultClass(result.t + offset, result.y)
 
         # update params for next run
