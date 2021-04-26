@@ -1,0 +1,58 @@
+<mxfile host="app.diagrams.net" modified="2021-04-22T00:00:38.993Z" agent="5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.128 Safari/537.36 Edg/89.0.774.77" etag="XD6bmjyRVstuSzYk9bt-" version="14.6.1" type="github">
+  <diagram id="utaHkir9cNiWWHMlUNL8" name="Page-1">
+    <mxGraphModel dx="841" dy="796" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-5" value="Simulation" style="swimlane;fontStyle=1;align=center;verticalAlign=top;childLayout=stackLayout;horizontal=1;startSize=26;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="440" width="220" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-6" value="+ tide_elev: np.array&#xa;+ init_land_elev: float&#xa;+ index: np.array&#xa;+ init_conc: float&#xa;+ bound_conc: float&#xa;+ grain_dia: float&#xa;+ grain_dens: float&#xa;+ bulk_dens: float&#xa;+ org_rate: float&#xa;+ comp_rate: float&#xa;+ sub_rate: float&#xa;+ linear_rate_sec: float&#xa;+ land_elev: np.array&#xa;+ tides: Tides&#xa;+ pos: int&#xa;+ repeats: int&#xa;+ rep: int&#xa;+ inundations: list" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" parent="2rcn7Dy2VV2zYY0n1cLn-5" vertex="1">
+          <mxGeometry y="26" width="220" height="274" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-7" value="" style="line;strokeWidth=1;fillColor=none;align=left;verticalAlign=middle;spacingTop=-1;spacingLeft=3;spacingRight=3;rotatable=0;labelPosition=right;points=[];portConstraint=eastwest;" parent="2rcn7Dy2VV2zYY0n1cLn-5" vertex="1">
+          <mxGeometry y="300" width="220" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-8" value="+ @p settle_rate: float&#xa;+ simulate()" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" parent="2rcn7Dy2VV2zYY0n1cLn-5" vertex="1">
+          <mxGeometry y="308" width="220" height="92" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-9" value="Inundation" style="swimlane;fontStyle=1;align=center;verticalAlign=top;childLayout=stackLayout;horizontal=1;startSize=26;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;" parent="1" vertex="1">
+          <mxGeometry x="40" y="50" width="250" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-10" value="+ tide_elev: np.array&#xa;+ init_land_elev: float&#xa;+ index: np.array&#xa;+ pos: int&#xa;+ init_conc: float&#xa;+ bound_conc: float&#xa;+ settle_rate: float&#xa;+ bulk_dens: float&#xa;+ result: list" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" parent="2rcn7Dy2VV2zYY0n1cLn-9" vertex="1">
+          <mxGeometry y="26" width="250" height="144" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-11" value="" style="line;strokeWidth=1;fillColor=none;align=left;verticalAlign=middle;spacingTop=-1;spacingLeft=3;spacingRight=3;rotatable=0;labelPosition=right;points=[];portConstraint=eastwest;" parent="2rcn7Dy2VV2zYY0n1cLn-9" vertex="1">
+          <mxGeometry y="170" width="250" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-12" value="+ @p tide_spline(): np.array&#xa;+ @p tide_spline_deriv(): np.array&#xa;+ @p slack(): int&#xa;+ @p start(): int&#xa;+ @p end(): int&#xa;+ aggrade()&#xa;+ plot()" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" parent="2rcn7Dy2VV2zYY0n1cLn-9" vertex="1">
+          <mxGeometry y="178" width="250" height="122" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-30" value="Tides" style="swimlane;fontStyle=1;align=center;verticalAlign=top;childLayout=stackLayout;horizontal=1;startSize=26;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;" parent="1" vertex="1">
+          <mxGeometry x="550" y="400" width="240" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-31" value="+ tide_elev: np.array&#xa;+ land_elev: np.array&#xa;+ index: np.array" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" parent="2rcn7Dy2VV2zYY0n1cLn-30" vertex="1">
+          <mxGeometry y="26" width="240" height="54" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-32" value="" style="line;strokeWidth=1;fillColor=none;align=left;verticalAlign=middle;spacingTop=-1;spacingLeft=3;spacingRight=3;rotatable=0;labelPosition=right;points=[];portConstraint=eastwest;" parent="2rcn7Dy2VV2zYY0n1cLn-30" vertex="1">
+          <mxGeometry y="80" width="240" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="2rcn7Dy2VV2zYY0n1cLn-33" value="+ @p depth(): np.array&#xa;+ @p zero_crossings: np.array&#xa;+ update(new_land_elev, pos, linear_rate)&#xa;+ find_inundation(pos): Inundation" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" parent="2rcn7Dy2VV2zYY0n1cLn-30" vertex="1">
+          <mxGeometry y="88" width="240" height="82" as="geometry" />
+        </mxCell>
+        <mxCell id="ZjqNjTbliwN7awZwp2EU-1" value="InundationResult" style="swimlane;fontStyle=1;align=center;verticalAlign=top;childLayout=stackLayout;horizontal=1;startSize=26;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;" vertex="1" parent="1">
+          <mxGeometry x="425" y="40" width="210" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="ZjqNjTbliwN7awZwp2EU-2" value="+ flood_result: scipy.OdeResult&#xa;+ ebb_result: scipy:OdeResult" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="ZjqNjTbliwN7awZwp2EU-1">
+          <mxGeometry y="26" width="210" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="ZjqNjTbliwN7awZwp2EU-3" value="" style="line;strokeWidth=1;fillColor=none;align=left;verticalAlign=middle;spacingTop=-1;spacingLeft=3;spacingRight=3;rotatable=0;labelPosition=right;points=[];portConstraint=eastwest;" vertex="1" parent="ZjqNjTbliwN7awZwp2EU-1">
+          <mxGeometry y="70" width="210" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="ZjqNjTbliwN7awZwp2EU-4" value="+ @p time(): np.array&#xa;+ @p conc(): np.array&#xa;+ land_elev(): np.array&#xa;+ land_elev_start(): float&#xa;+ land_elev_end(): float&#xa;+ land_elev_delta(): float&#xa;+ plot(limb)" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="ZjqNjTbliwN7awZwp2EU-1">
+          <mxGeometry y="78" width="210" height="112" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
