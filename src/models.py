@@ -7,6 +7,7 @@ import scipy
 import time
 import logging
 from matplotlib import pyplot as plt
+from scipy.interpolate.dfitpack import parcur
 import seaborn as sns
 sns.set()
 
@@ -61,10 +62,59 @@ def zero_depth(t, y, *args):
 zero_depth.terminal = True
 zero_depth.direction = -1
 
+class Params:
+    def __init__(
+        self,
+        timestep,
+        init_conc,
+        bound_conc,
+        grain_dia,
+        grain_dens,
+        bulk_dens,
+        org_rate,
+        comp_rate,
+        sub_rate,
+        slr,
+        method,
+    ):
+        self.timestep = timestep
+        self.init_conc = init_conc
+        self.bound_conc = bound_conc
+        self.grain_dia = grain_dia
+        self.grain_dens = grain_dens
+        self.bulk_dens = bulk_dens
+        self.org_rate = org_rate
+        self.comp_rate = comp_rate
+        self.sub_rate = sub_rate
+        self.slr = slr
+        self.method = method
+
+    def __repr__(self):
+        return "<{} @{id:x} {attrs}>".format(
+            self.__class__.__name__,
+            id=id(self) & 0xFFFFFF,
+            attrs=" ".join("\n{}={!r}".format(k, v) for k, v in self.__dict__.items()),
+            )
+
+    @property
+    def settle_rate(self):
+        return stokes_settling(
+                grain_dia=self.grain_dia,
+                grain_dens=self.grain_dens,
+                fluid_dens=1000.0,
+                fluid_visc=0.001,
+                g=9.8)
+
+    @property
+    def linear_rate_sec(self):
+        return (self.org_rate - self.comp_rate - self.sub_rate) / 365 / 24 / 60 / 60
 
 
-
-class InundationODE(OdeResult):
+class InundationOdeResult(OdeResult):
+    def __init__(self, result):
+        super(InundationOdeResult, self).__init__(result)
+        self.aggradation = self.y[2][-1] - self.y[2][0]
+        self.degradation = None
 
     def plot(self):
         fig, axs = plt.subplots(3, 1)
@@ -99,11 +149,9 @@ class InundationODE(OdeResult):
 class InundationResult:
     def __init__(
         self,
-        flood=None,
-        ebb=None,
     ):
-        self.flood = flood
-        self.ebb = ebb
+        self.flood = None
+        self.ebb = None
 
     def __repr__(self):
         return "<{} @{id:x} {attrs}>".format(
@@ -121,6 +169,10 @@ class InundationResult:
         return np.append(self.flood.y[0], self.ebb.y[0][1:])
 
     @property
+    def slack_time(self):
+        return self.ebb.t[0]
+
+    @property
     def conc(self):
         return np.append(self.flood.y[1], self.ebb.y[1][1:])
 
@@ -129,16 +181,12 @@ class InundationResult:
         return np.append(self.flood.y[2], self.ebb.y[2][1:])
 
     @property
-    def land_elev_start(self):
-        return self.land_elev[0]
+    def aggradation(self):
+        return self.flood.aggradation + self.ebb.aggradation
 
     @property
-    def land_elev_end(self):
-        return self.land_elev[-1]
-
-    @property
-    def land_elev_delta(self):
-        return self.land_elev[-1] - self.land_elev[0]
+    def degradation(self):
+        return self.flood.degradation + self.ebb.degradation
 
     def plot(self):
         fig, axs = plt.subplots(3, 1)
@@ -151,7 +199,7 @@ class InundationResult:
             data={
                 "tide_elev": self.tide_elev,
                 "conc": self.conc,
-                "land_elev_delta": (self.land_elev - self.land_elev_start) * 1000
+                "land_elev_delta": (self.land_elev - self.land_elev[-1]) * 1000
             },
             index=time)
         sns.lineplot(ax=axs[0], data=df[ "tide_elev"], color="b")
@@ -171,31 +219,21 @@ class InundationResult:
             )
 
         for ax in axs:
-            ax.axvline((self.ebb.t[0] - self.time[0]) / 60, color="k", linestyle="--")
+            ax.axvline((self.slack_time - self.time[0]) / 60, color="k", linestyle="--")
 
 
 class Inundation:
     def __init__(
         self,
+        index,
         tide_elev,
         init_land_elev,
-        index,
-        pos,
-        init_conc=None,
-        bound_conc=None,
-        settle_rate=None,
-        bulk_dens=None,
-        result=None,
     ):
+        self.index = index
         self.tide_elev = tide_elev
         self.init_land_elev = init_land_elev
-        self.index = index
-        self.pos =  pos
-        self.init_conc = init_conc
-        self.bound_conc = bound_conc
-        self.settle_rate = settle_rate
-        self.bulk_dens = bulk_dens
-        self.result = result
+        self.params = None
+        self.result = None
 
     def __repr__(self):
         return "<{} @{id:x} {attrs}>".format(
@@ -213,130 +251,70 @@ class Inundation:
         return self.tide_spline.derivative()
 
     @property
-    def slack_time(self):
-        return np.argmax(self.tide_elev) + self.pos
-
-    @property
-    def slack_elev(self):
-        return np.max(self.tide_elev)
-
-    @property
-    def start(self):
+    def start_pos(self):
         return self.index[0]
 
     @property
-    def end(self):
+    def end_pos(self):
         return self.index[-1]
 
     @property
     def period(self):
         return self.index[-1] - self.index[0]
 
+    @property
+    def slack_pos(self):
+        return np.argmax(self.tide_elev) + self.index[0]
+
+    @property
+    def slack_elev(self):
+        return np.max(self.tide_elev)
 
     def aggrade(self):
         self.result = InundationResult()
 
         flood = solve_ivp(
             fun=aggrade,
-            t_span=[self.index[0], self.slack_time],
-            y0=[self.tide_elev[0], self.init_conc, self.init_land_elev],
-            method="DOP853",
+            t_span=[self.start_pos, self.slack_pos],
+            y0=[self.tide_elev[0], self.params.init_conc, self.init_land_elev],
+            method=self.params.method,
             args=(
                 "flood",
                 self.tide_spline_deriv,
-                self.bound_conc,
-                self.settle_rate,
-                self.bulk_dens,
+                self.params.bound_conc,
+                self.params.settle_rate,
+                self.params.bulk_dens,
                 )
             )
-        self.result.flood = InundationODE(flood)
+        self.result.flood = InundationOdeResult(flood)
+        self.result.flood.degradation = (self.slack_pos - self.start_pos) * self.params.linear_rate_sec
+
         assert flood.success is True, "[t={}] Flood integration failed!".format(self.index[0])
-        assert (self.slack_elev - self.init_land_elev) * self.bound_conc >= (flood.y[2][-1] - flood.y[2][0]) * self.bulk_dens, "Too much mass extracted! Available: {:.2e}, Extracted: {:.2e}".format((self.slack_elev - self.init_land_elev) * self.bound_conc, (flood.y[2][-1] - flood.y[2][0]) * self.bulk_dens)
         assert (flood.y[0] >= flood.y[2]).all(), "[t={}] Depth cannot be negative!\ndepths={}".format(self.index[0], self.tide_spline(flood.t) - flood.y[1])
         assert (flood.y[1][:-1] >= 0).all(), "[t={}] Concentration cannot be negative!\nconc={}".format(self.index[0], flood.y[1])
+        # assert (self.slack_elev - self.init_land_elev) * self.bound_conc >= (flood.y[2][-1] - flood.y[2][0]) * self.bulk_dens, "Too much mass extracted! Available: {:.2e}, Extracted: {:.2e}".format((self.slack_elev - self.init_land_elev) * self.bound_conc, (flood.y[2][-1] - flood.y[2][0]) * self.bulk_dens)
 
         ebb = solve_ivp(
             fun=aggrade,
-            t_span=[self.slack_time, self.index[-1]],
+            t_span=[self.slack_pos, self.end_pos],
             y0=[self.slack_elev, flood.y[1][-1], flood.y[2][-1]],
             events=(zero_conc, zero_depth),
-            method="DOP853",
+            method=self.params.method,
             args=(
                 "ebb",
                 self.tide_spline_deriv,
-                self.bound_conc,
-                self.settle_rate,
-                self.bulk_dens,
+                self.params.bound_conc,
+                self.params.settle_rate,
+                self.params.bulk_dens,
                 )
             )
-        self.result.ebb = InundationODE(ebb)
+        self.result.ebb = InundationOdeResult(ebb)
+        self.result.ebb.degradation = (self.end_pos - self.slack_pos) * self.params.linear_rate_sec
+
         assert ebb.success is True, "[t={}] Ebb integration failed!".format(ebb.t[0])
-        assert ebb.y[1][0] >= (ebb.y[2][-1] - ebb.y[2][0]) * self.bulk_dens, "Too much mass extracted! Available: {:.2e}, Extracted: {:.2e}".format(ebb.y[1][0], (ebb.y[2][-1] - ebb.y[2][0]) * self.bulk_dens)
         assert (ebb.y[0] >= ebb.y[2]).all(), "[t={}] Depth cannot be negative!\ndepths={}".format(ebb.t[0], ebb.y[0] - ebb.y[1])
         assert (ebb.y[1][:-1] >= 0).all(), "[t={}] Concentration cannot be negative!\nconc={}".format(ebb.t[0], ebb.y[1])
-
-class SimulationResults:
-    def __init__(self):
-        self.data = pd.DataFrame(columns=["tide_elev", "land_elev"])
-        self.degradation = 0.0
-        self.aggradation = 0.0
-        self.start_time = time.perf_counter()
-        self.end_time = None
-
-    @property
-    def run_time(self):
-        return self.end_time - self.start_time
-
-    @property
-    def land_elev_delta(self):
-        return self.data.iloc[-1].land_elev - self.data.iloc[0].land_elev
-
-    def append(self, index, tide_elev, land_elev):
-        new_data = pd.DataFrame(
-            data={
-                "tide_elev": tide_elev,
-                "land_elev": land_elev
-                },
-            index=index
-        )
-        self.data = self.data.append(new_data)
-
-
-class Params:
-    def __init__(
-        self,
-        init_land_elev,
-        init_conc,
-        bound_conc,
-        grain_dia,
-        grain_dens,
-        bulk_dens,
-        org_rate,
-        comp_rate,
-        sub_rate,
-    ):
-        self.init_land_elev = init_land_elev
-        self.init_conc = init_conc
-        self.bound_counc = bound_conc
-        self.grain_dia = grain_dia
-        self.grain_dens = grain_dens
-        self.bulk_dens = bulk_dens
-        self.org_rate = org_rate
-        self.comp_rate = comp_rate
-        self.sub_rate = sub_rate
-
-    @property
-    def settle_rate(self):
-        return stokes_settling(
-                grain_dia=self.grain_dia,
-                grain_dens=self.grain_dens,
-                fluid_dens=1000.0,
-                fluid_visc=0.001,
-                g=9.8)
-
-    @property
-    def linear_rate_sec(self):
-        return (self.org_rate - self.comp_rate - self.sub_rate) / 365 / 24 / 60 / 60
+        # assert ebb.y[1][0] >= (ebb.y[2][-1] - ebb.y[2][0]) * self.bulk_dens, "Too much mass extracted! Available: {:.2e}, Extracted: {:.2e}".format(ebb.y[1][0], (ebb.y[2][-1] - ebb.y[2][0]) * self.bulk_dens)
 
 class Tides:
     def __init__(self, index, tide_elev, land_elev):
@@ -368,15 +346,6 @@ class Tides:
         crossings = np.where(np.diff(np.signbit(self.tide_elev - (self.land_elev + 0.001))))[0] + 1
         return crossings
 
-    def update(self, new_land_elev, pos, linear_rate=0.0):
-        before = self.land_elev[:pos]
-        after = apply_rate(init_val=new_land_elev, index=self.index[pos:], timestep_sec=self.timestep, rate_per_sec=linear_rate)
-        new = np.append(before, after)
-
-        assert len(new) == len(self.land_elev), "Length of new land elevation array does not match old array."
-
-        self.land_elev = new
-
     def find_inundation(self, pos):
         remaining_crossings = self.zero_crossings[self.zero_crossings > pos]
         while True:
@@ -401,13 +370,45 @@ class Tides:
             pos = start
 
             inundation = Inundation(
+                index=self.index[start:end],
                 tide_elev=self.tide_elev[start:end],
                 init_land_elev=self.land_elev[start],
-                index=self.index[start:end],
-                pos=pos,
                 )
 
             return inundation
+
+    def plot(self):
+        plt.plot(self.index, self.tide_elev, color="b", alpha=0.65)
+        plt.plot(self.index, self.land_elev, color="g")
+
+class SimulationResults:
+    def __init__(self):
+        self.data = pd.DataFrame(columns=["tide_elev", "land_elev"])
+        self.degradation = 0.0
+        self.aggradation = 0.0
+        self.start_time = time.perf_counter()
+        self.end_time = None
+
+    @property
+    def run_time(self):
+        return self.end_time - self.start_time
+
+    @property
+    def land_elev_delta(self):
+        return self.data.iloc[-1].land_elev - self.data.iloc[0].land_elev
+
+    def append(self, index, tide_elev, land_elev):
+        new_data = pd.DataFrame(
+            data={
+                "tide_elev": tide_elev,
+                "land_elev": land_elev
+                },
+            index=index
+        )
+        self.data = self.data.append(new_data)
+
+    def plot(self, frac=1.0):
+        self.data.sample(frac=frac).sort_index().plot()
 
 class Simulation:
     def __init__(
@@ -424,46 +425,37 @@ class Simulation:
         comp_rate,
         sub_rate,
         slr,
-        pos=0,
+        method="RK45",
         runs=1,
-        inundations=[],
     ):
         self.params = Params(
-            init_land_elev=self.init_land_elev,
-            init_conc=self.init_conc,
-            bound_conc=self.bound_conc,
-            grain_dia=self.grain_dia,
-            grain_dens=self.grain_dens,
-            bulk_dens=self.bulk_dens,
-            org_rate=self.org_rate,
-            comp_rate=self.comp_rate,
-            sub_rate=self.sub_rate,
+            timestep=index[1] - index[0],
+            init_conc=init_conc,
+            bound_conc=bound_conc,
+            grain_dia=grain_dia,
+            grain_dens=grain_dens,
+            bulk_dens=bulk_dens,
+            org_rate=org_rate,
+            comp_rate=comp_rate,
+            sub_rate=sub_rate,
+            slr=slr,
+            method=method,
             )
-        self.tide_elev = tide_elev
-        self.init_land_elev = init_land_elev
-        self.index = index
-        self.timestep = index[1] - index[0]
-        self.init_conc = init_conc
-        self.conc = np.zeros(len(index))
-        self.bound_conc = bound_conc
-        self.grain_dia = grain_dia
-        self.grain_dens = grain_dens
-        self.bulk_dens = bulk_dens
-        self.org_rate = org_rate
-        self.comp_rate = comp_rate
-        self.sub_rate = sub_rate
-        self.linear_rate_sec = (self.org_rate - self.comp_rate - self.sub_rate) / 365 / 24 / 60 / 60
-        self.land_elev = apply_rate(
-            init_val=self.init_land_elev,
-            index=self.index,
-            timestep_sec=self.timestep,
-            rate_per_sec=self.linear_rate_sec
-            )
-        self.slr = slr
-        self.pos =  pos
+        self.tides=Tides(
+            index=index,
+            tide_elev=tide_elev,
+            land_elev=apply_rate(
+                init_val=init_land_elev,
+                index=index,
+                timestep_sec=self.params.timestep,
+                rate_per_sec=self.params.linear_rate_sec
+            ),
+        )
         self.runs = runs
-        self.inundations = inundations
+        self.pos =  0
         self.results = SimulationResults()
+        self.inundations = []
+        self.status = 0
 
     def __repr__(self):
         return "<{} @{id:x} {attrs}>".format(
@@ -472,113 +464,63 @@ class Simulation:
             attrs=" ".join("\n{}={!r}".format(k, v) for k, v in self.__dict__.items()),
             )
 
-    @property
-    def settle_rate(self):
-        return stokes_settling(
-                grain_dia=self.grain_dia,
-                grain_dens=self.grain_dens,
-                fluid_dens=1000.0,
-                fluid_visc=0.001,
-                g=9.8)
-
-    @property
-    def depth(self):
-        return self.tide_elev - self.land_elev
-
-    @property
-    def zero_crossings(self):
-        crossings = np.where(np.diff(np.signbit(self.tide_elev - (self.land_elev + 0.001))))[0] + 1
-        return crossings
-
-    def find_inundation(self):
-        pos = self.pos
-        remaining_crossings = self.zero_crossings[self.zero_crossings > pos]
-        while True:
-            if len(remaining_crossings) == 0:
-                pos = self.index[-1]
-                return None
-            elif len(remaining_crossings) == 1:
-                print('Warning: Partial inundation cycle!')
-                start = remaining_crossings[0]
-                end = self.index[-1]
-            else:
-                start, end = remaining_crossings[0:2]
-
-            if not (self.tide_elev[start:end] > self.land_elev[start:end]).all():
-                raise Exception
-
-            if end - start < 4:
-                pos = end + self.timestep
-                print("Small inundation at t={}->{}. Skipping.")
-                continue
-
-            pos = start
-
-            inundation = Inundation(
-                tide_elev=self.tide_elev[start:end],
-                init_land_elev=self.land_elev[start],
-                index=self.index[start:end],
-                pos=pos,
-                bound_conc=self.bound_conc,
-                settle_rate=self.settle_rate,
-                init_conc=self.init_conc,
-                bulk_dens=self.bulk_dens,
-                )
-
-            return inundation
-
-    def update_land(self, inundation):
-        before = self.land_elev[:inundation.end]
+    def update_land(self, inundation: Inundation):
+        before = self.tides.land_elev[:inundation.end_pos]
         after = apply_rate(
-            init_val=inundation.result.land_elev_end - self.linear_rate_sec * inundation.period,
-            index=self.index[inundation.end:],
-            timestep_sec=self.timestep,
-            rate_per_sec=self.linear_rate_sec
+            init_val=inundation.result.land_elev[-1],
+            index=self.tides.index[inundation.end_pos:],
+            timestep_sec=inundation.params.timestep,
+            rate_per_sec=inundation.params.linear_rate_sec,
             )
         new = np.append(before, after)
 
-        assert len(new) == len(self.land_elev), "Length of new land elevation array does not match old array."
+        assert len(new) == len(self.tides.land_elev), "Length of new land elevation array does not match old array."
 
-        self.land_elev = new
+        self.tides.land_elev = new
 
-    def update_results(self, inundation=None, degradation=None):
-        if inundation and degradation:
-            raise Exception("Can only update inundation or degradation. Not both!")
-        elif inundation:
-            self.results.append(
-                index=inundation.result.time,
-                tide_elev=inundation.result.tide_elev,
-                land_elev=inundation.result.land_elev - self.linear_rate_sec * inundation.period
+    def update_results(self, inundation: Inundation):
+        self.results.append(
+                index=self.tides.index[self.pos:inundation.start_pos],
+                tide_elev=self.tides.tide_elev[self.pos:inundation.start_pos],
+                land_elev=self.tides.land_elev[self.pos:inundation.start_pos],
                 )
-            self.results.aggradation = self.results.aggradation + inundation.result.land_elev_delta
-            self.results.degradation = self.results.degradation + self.linear_rate_sec * inundation.period
-        elif degradation:
-            self.results.degradation = self.results.degradation + degradation
+        self.results.degradation = self.results.degradation + self.params.linear_rate_sec * (inundation.start_pos - self.pos)
+        self.results.append(
+            index=inundation.result.time,
+            tide_elev=inundation.result.tide_elev,
+            land_elev=inundation.result.land_elev
+            )
+        self.results.aggradation = self.results.aggradation + inundation.result.aggradation
+        self.results.degradation = self.results.degradation + inundation.result.degradation
+
+    def update(self):
+        if self.status == 0:
+            latest_result = self.inundations[-1]
+            self.update_results(latest_result)
+            self.update_land(latest_result)
+            self.pos = latest_result.index[-1] + self.params.timestep
+        elif self.status == 1:
+            self.results.append(
+                index=self.tides.index[self.pos:],
+                tide_elev=self.tides.tide_elev[self.pos:],
+                land_elev=self.tides.land_elev[self.pos:],
+                )
+            self.pos = self.tides.index[-1]
+            self.results.end_time = time.perf_counter()
 
 
     def simulate(self):
-        inundation = self.find_inundation()
-        while inundation is not None:
-            self.results.append(
-                index=self.index[self.pos:inundation.start],
-                tide_elev=self.tide_elev[self.pos:inundation.start],
-                land_elev=self.land_elev[self.pos:inundation.start],
-                )
-            self.inundations.append(inundation)
-            self.update_results(degradation=self.linear_rate_sec * (inundation.start - self.pos))
-            inundation.aggrade()
-            self.update_results(inundation=inundation)
-            self.update_land(inundation=inundation)
-            self.pos = inundation.index[-1] + self.timestep
-            inundation = self.find_inundation()
+        while self.status == 0:
+            inundation = self.tides.find_inundation(pos=self.pos)
+            if inundation:
+                inundation.params = self.params
+                self.inundations.append(inundation)
+                inundation.aggrade()
+                self.update()
+            elif inundation is None:
+                self.status = 1
+                self.update()
 
-        self.results.append(
-            index=self.index[self.pos:],
-            tide_elev=self.tide_elev[self.pos:],
-            land_elev=self.land_elev[self.pos:],
-            )
-        self.results.end_time = time.perf_counter()
-        self.pos = self.index[-1]
         self.print_results()
 
     def print_results(self):
@@ -589,12 +531,12 @@ class Simulation:
         print("Runtime:               {}".format(time.strftime("%H:%M:%S", time.gmtime(self.results.run_time))))
 
 
-    def run_model(self, runs):
-        for run in range(0, self.runs):
-            offset = (len(self.tide_elev) * self.timestep) * run
-            self.tides.index = self.tides.index + offset
-            self.simulate(tides = self.tides)
+    # def run_model(self, runs):
+    #     for run in range(0, self.runs):
+    #         offset = (len(self.tide_elev) * self.timestep) * run
+    #         self.tides.index = self.tides.index + offset
+    #         self.simulate(tides = self.tides)
 
-            self.init_land_elev = self.results[-1].land_elev[-1]
-            self.tides.tide_elev = self.tide_elev + self.slr
-            self.tides.land_elev = self.land_elev
+    #         self.init_land_elev = self.results[-1].land_elev[-1]
+    #         self.tides.tide_elev = self.tide_elev + self.slr
+    #         self.tides.land_elev = self.land_elev
