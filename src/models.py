@@ -159,7 +159,7 @@ class Params:
 
     @property
     def linear_rate_sec(self):
-        return (self.org_rate - self.comp_rate - self.sub_rate) / 365 / 24 / 60 / 60
+        return (self.org_rate + self.comp_rate + self.sub_rate) / 365 / 24 / 60 / 60
 
 
 class LimbResult(OdeResult):
@@ -412,11 +412,13 @@ class Inundation:
 
 class Tides:
     def __init__(self, tide_ts=None, land_elev_init=None, params=None):
-        self.index = tide_ts.index.values
-        self.tide_elev = tide_ts.values
-        self.land_elev = land_elev_init - tide_ts.index.values * params.linear_rate_sec
-        self.pos = 0
+        index = tide_ts.index.values
+        tide_elev = tide_ts.values
+        land_elev = land_elev_init - tide_ts.index.values * params.linear_rate_sec
+        self.df = tide_df(index=index, tide_elev=tide_elev, land_elev=land_elev)
         self.params = params
+        self.pos = 0
+        # self.remaining_inundations = len(self.zero_crossings) / 2
 
     def __repr__(self):
         return "{name} @{id:x} {attrs}".format(
@@ -425,49 +427,42 @@ class Tides:
             attrs="".join("\n{}={!r}".format(k, v) for k, v in self.__dict__.items()),
         )
 
-    @property
-    def df(self):
-        return tide_df(
-            index=self.index, tide_elev=self.tide_elev, land_elev=self.land_elev
-        )
-
     def subset(self, start=0, end=None, include_conc=True):
         df = self.df.iloc[start:end]
         if include_conc is True:
-            df["conc"] = 0
+            df.loc[:, "conc"] = 0.0
         return df
 
     def degradation(self, start=0, end=-1):
-        return self.land_elev[start] - self.land_elev[end]
+        return self.df.land_elev.iat[start] - self.land_elev.iat[end]
 
-    @property
-    def zero_crossings(self):
+    def zero_crossings(self, pos=None):
+        if pos is None:
+            pos = self.pos
         crossings = (
             np.where(
                 np.diff(
                     np.signbit(
-                        self.tide_elev[self.pos :]
-                        - (self.land_elev[self.pos :] + self.params.min_depth)
+                        self.tide_elev[pos:]
+                        - (self.land_elev[pos:] + self.params.min_depth)
                     )
                 )
             )[0]
             + 1
         )
-        return crossings + self.pos
+        return crossings + pos
 
-    def find_inundation(self, pbar=None):
+    def find_inundation(self):
         remaining_crossings = self.zero_crossings
+        self.remaining_inundations = len(remaining_crossings) / 2
         while True:
-            if len(remaining_crossings) == 0:
-                if pbar:
-                    pbar.total = pbar.n + pbar.n * pbar.runs_left
-                    pbar.refresh()
+            if self.remaining_inundations == 0:
                 return None
-            elif len(remaining_crossings) == 1:
+            elif self.remaining_inundations == 0.5:
                 print("Warning: Partial inundation cycle!")
                 start = remaining_crossings[0]
                 end = self.index[-1]
-            elif len(remaining_crossings) > 1:
+            elif self.remaining_inundations >= 1:
                 start, end = remaining_crossings[0:2]
 
             if end - start < 4:
@@ -485,11 +480,6 @@ class Tides:
                 land_elev_init=subset.land_elev.values[0],
                 params=self.params,
             )
-            if pbar:
-                pbar.total = (pbar.n + len(remaining_crossings) / 2) + (
-                    pbar.n + len(remaining_crossings) / 2
-                ) * pbar.runs_left
-                pbar.update()
 
             return inundation
 
@@ -512,6 +502,7 @@ class Tides:
         )
 
         self.land_elev = new
+        self.set_df()
         self.pos = inundation.pos_end + self.params.timestep
 
 
@@ -520,8 +511,6 @@ class SimulationResults:
         self.inundations = []
         self.aggradation = 0.0
         self.degradation = 0.0
-        self.start_time = time.perf_counter()
-        self.end_time = None
         self.df = tide_df()
 
     def __repr__(self):
@@ -532,27 +521,23 @@ class SimulationResults:
         )
 
     @property
-    def runtime(self):
-        return self.end_time - self.end_time
-
-    @property
     def land_elev_change(self):
         return self.df.land_elev.iat[-1] - self.df.land_elev.iat[0]
 
     def update(self, tide: Tides, inundation: Inundation):
         if inundation is not None:
-            tide_df = tide.subset(start=tide.pos, end=inundation.pos_start)
+            tide_df = tide.df.loc[tide.pos : inundation.pos_start]
             tide_degradation = tide_df.land_elev.iat[0] - tide_df.land_elev.iat[-1]
-            self.df = self.df.append([tide_df, inundation.result.df])
+            self.df = self.df.append([tide_df, inundation.result.df]).fillna(0.0)
             self.aggradation = self.aggradation + inundation.result.aggradation
             self.degradation = (
                 self.degradation + tide_degradation + inundation.result.degradation
             )
             self.inundations.append(inundation)
         elif inundation is None:
-            tide_df = tide.subset(start=tide.pos)
+            tide_df = tide.df.loc[tide.pos :]
             tide_degradation = tide_df.land_elev.iat[0] - tide_df.land_elev.iat[-1]
-            self.df = self.df.append(tide_df)
+            self.df = self.df.append(tide_df).fillna(0.0)
             self.degradation = self.degradation + tide_degradation
 
     def plot(self, frac=1.0):
@@ -610,10 +595,9 @@ class Simulation:
         self.run = 0
         self.n = 0
         self.runs = runs
-        self.pbar = tqdm(
-            total=len(self.tides.zero_crossings) / 2 * self.runs, leave=True, position=0
-        )
-        self.pbar.runs_left = self.runs - 1.0
+        self.start_time = None
+        self.end_time = None
+        self.pbar = None
 
     def __repr__(self):
         return "{name} @{id:x} {attrs}".format(
@@ -622,12 +606,16 @@ class Simulation:
             attrs="".join("\n{}={!r}".format(k, v) for k, v in self.__dict__.items()),
         )
 
-    def step(self, N=1):
-        max_step = self.n + N
+    def step(self, steps=1):
+        max_step = self.n + steps
         while self.n < max_step:
-            inundation = self.tides.find_inundation(pbar=self.pbar)
+            inundation = self.tides.find_inundation()
             try:
                 inundation.aggrade()
+                self.pbar.total = (self.pbar.n + self.tides.remaining_inundations) * (
+                    self.runs - self.run
+                )
+                self.pbar.update(n=1.0)
             except AttributeError:
                 pass
 
@@ -639,20 +627,34 @@ class Simulation:
         while self.tides.pos < self.tides.index[-1]:
             self.step()
         self.run += 1
-        self.pbar.runs_left = self.runs - self.run
 
     def run_all(self):
+        self.start_time = time.perf_counter()
+        self.pbar = tqdm(
+            total=self.tides.remaining_inundations * self.runs,
+            leave=True,
+            position=0,
+            unit="inundations",
+            desc="Progress",
+        )
         while self.run < self.runs:
             self.run_one()
             offset = (len(self.tides.index) * self.params.timestep) * self.run
-            tide_ts = self.tides.df.tide_elev + offset
+            tide_ts = pd.Series(
+                data=self.tides.df.tide_elev.values,
+                index=self.tides.df.index.values + offset,
+            )
             self.tides = Tides(
                 tide_ts=tide_ts,
                 land_elev_init=self.results.df.land_elev.iat[-1],
                 params=self.params,
             )
-        self.results.end_time = time.perf_counter()
+        self.end_time = time.perf_counter()
         self.print_results()
+
+    @property
+    def runtime(self):
+        return time.strftime("%H:%M:%S", time.gmtime(self.end_time - self.end_time))
 
     def print_results(self):
         print("-" * 40)
@@ -683,10 +685,5 @@ class Simulation:
             )
         )
         print("-" * 40)
-        print(
-            "{:<25} {:>12}".format(
-                "Runtime: ",
-                time.strftime("%H:%M:%S", time.gmtime(self.results.runtime)),
-            )
-        )
+        print("{:<25} {:>12}".format("Runtime: ", self.runtime,))
 
