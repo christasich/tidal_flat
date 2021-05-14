@@ -39,43 +39,48 @@ def stokes_settling(grain_diam, grain_dens, fluid_dens=1000.0, fluid_visc=0.001,
 def aggrade_flood(
     t, y, args,
 ):
-
-    # set values for concentration and elevation
     tide_elev = y[0]
     conc = y[1]
     land_elev = y[2]
+    depth = tide_elev - land_elev
 
-    # use spline function for tide height to set current water_height
-    depth = tide_elev - land_elev  # calculate current depth
-
-    # use derivative of tide spline to get current gradient and set H
-    dZdt = args.dZdt_func(t)
-    dCdt = (
-        -(args.settle_rate * conc) / depth - 1 / depth * (conc - args.conc_bound) * dZdt
+    d1dt_tide_elev = args.tide_func.derivative()(t)
+    d1dt_land_elev = args.settle_rate * conc / args.bulk_dens
+    d1dt_depth = d1dt_tide_elev - d1dt_land_elev
+    d1dt_conc = (
+        -(args.settle_rate * conc) / depth
+        - 1 / depth * (conc - args.conc_bound) * d1dt_depth
     )
-    dEdt = args.settle_rate * conc / args.bulk_dens
+    d1dt_agg_max = args.conc_bound * d1dt_depth / args.bulk_dens
 
-    return [dZdt, dCdt, dEdt]
+    return [
+        d1dt_tide_elev,
+        d1dt_conc,
+        d1dt_land_elev,
+        d1dt_agg_max,
+    ]
 
 
 def aggrade_ebb(
     t, y, args,
 ):
 
-    # set values for concentration and elevation
     tide_elev = y[0]
     conc = y[1]
     land_elev = y[2]
+    depth = tide_elev - land_elev
 
-    # use spline function for tide height to set current water_height
-    depth = tide_elev - land_elev  # calculate current depth
+    d1dt_tide_elev = args.tide_func.derivative()(t)
+    d1dt_land_elev = args.settle_rate * conc / args.bulk_dens
+    d1dt_conc = -(args.settle_rate * conc) / depth
+    d1dt_agg_max = 0.0
 
-    # use derivative of tide spline to get current gradient and set H
-    dZdt = args.dZdt_func(t)
-    dCdt = -(args.settle_rate * conc) / depth
-    dEdt = args.settle_rate * conc / args.bulk_dens
-
-    return [dZdt, dCdt, dEdt]
+    return [
+        d1dt_tide_elev,
+        d1dt_conc,
+        d1dt_land_elev,
+        d1dt_agg_max,
+    ]
 
 
 def zero_conc(t, y, args):
@@ -163,16 +168,32 @@ class Params:
 
 
 class LimbResult(OdeResult):
-    def __init__(self, result):
+    def __init__(self, result, limb, params, pos_start, pos_end):
         super().__init__(result)
-        self.aggradation = self.y[2][-1] - self.y[2][0]
-        self.degradation = None
+        self.limb = limb
+        self.params = params
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        self._validate
 
     def __repr__(self):
         return "{name} @{id:x} {attrs}".format(
             name=self.__class__.__name__,
             id=id(self) & 0xFFFFFF,
             attrs="".join("\n{}={!r}".format(k, v) for k, v in self.__dict__.items()),
+        )
+
+    def _validate(self):
+        assert self.success is True, "[t={}] {} integration failed!".format(
+            self.t[0], self.limb
+        )
+        assert (
+            self.tide_elev >= self.land_elev
+        ).all(), "[t={}] Negative depths detected for {} limb.\ndepths={}".format(
+            self.t[0], self.limb, self.tide_elev - self.land_elev,
+        )
+        assert (self.agg_max >= self.agg).all(), "Overextraction on {}".format(
+            self.limb
         )
 
     @property
@@ -192,6 +213,22 @@ class LimbResult(OdeResult):
         return self.y[2]
 
     @property
+    def agg(self):
+        return self.y[2] - self.y[2][0]
+
+    @property
+    def agg_max(self):
+        return self.y[3]
+
+    @property
+    def agg_total(self):
+        return self.agg[-1]
+
+    @property
+    def deg_total(self):
+        return (self.pos_end - self.pos_start) * self.params.linear_rate_sec
+
+    @property
     def df(self):
         return tide_df(
             index=self.time,
@@ -200,29 +237,12 @@ class LimbResult(OdeResult):
             conc=self.conc,
         )
 
-    def plot(self):
-        fig, axs = plt.subplots(3, 1)
-        fig.set_figheight(10)
-        fig.set_figwidth(15)
-
-        time = self.time / 60
-
-        sns.lineplot(ax=axs[0], x=time, y=self.tide_elev, color="b")
-        axs[0].set(ylabel="Tide Elevation (m)")
-        axs[0].set(xticklabels=[])
-
-        sns.lineplot(ax=axs[1], x=time, y=self.conc, color="r")
-        axs[1].set(ylabel="Concentration (g/L)",)
-        axs[1].set(xticklabels=[])
-
-        sns.lineplot(ax=axs[2], x=time, y=self.land_elev, color="g")
-        axs[2].set(ylabel="Land Elevation $\Delta$ (mm)", xlabel="Time (min)")
-
 
 class InundationResult:
     def __init__(self, flood=None, ebb=None):
         self.flood = flood
         self.ebb = ebb
+        self.df = None
 
     def __repr__(self):
         return "{name} @{id:x} {attrs}".format(
@@ -248,8 +268,17 @@ class InundationResult:
         return np.append(self.flood.land_elev, self.ebb.land_elev[1:])
 
     @property
-    def df(self):
-        return tide_df(
+    def agg(self):
+        return np.append(self.flood.agg, (self.ebb.agg + self.flood.agg[-1])[1:])
+
+    @property
+    def agg_max(self):
+        return np.append(
+            self.flood.agg_max, (self.ebb.agg_max + self.flood.agg[-1])[1:]
+        )
+
+    def set_df(self):
+        self.df = tide_df(
             index=self.time,
             tide_elev=self.tide_elev,
             land_elev=self.land_elev,
@@ -261,44 +290,96 @@ class InundationResult:
         return self.ebb.t[0]
 
     @property
-    def aggradation(self):
-        return self.flood.aggradation + self.ebb.aggradation
+    def agg_total(self):
+        return self.flood.agg_total + self.ebb.agg_total
 
     @property
-    def degradation(self):
-        return self.flood.degradation + self.ebb.degradation
+    def deg_total(self):
+        return self.flood.deg_total + self.ebb.deg_total
 
-    def plot(self):
-        fig, axs = plt.subplots(3, 1)
-        fig.set_figheight(10)
+    def plot(self, limb="both"):
+
+        fig, axs = plt.subplots(4, 1)
+        fig.set_figheight(15)
         fig.set_figwidth(15)
 
-        time = self.time / 60
+        if limb == "both":
+            time = (self.time - self.time[0]) / 60
+            tide_elev = self.tide_elev
+            land_elev = self.land_elev
+            agg = self.agg
+            agg_max = self.agg_max
+            conc = self.conc
+            for ax in axs:
+                ax.axvline(
+                    ((self.slack_time - self.time[0]) / 60),
+                    color="black",
+                    linestyle="--",
+                )
+        else:
+            time = eval("self.{}.time".format(limb))
+            time = (time - time[0]) / 60
+            tide_elev = eval("self.{}.tide_elev".format(limb))
+            land_elev = eval("self.{}.land_elev".format(limb))
+            agg = eval("self.{}.agg".format(limb))
+            agg_max = eval("self.{}.agg_max".format(limb))
+            conc = eval("self.{}.conc".format(limb))
 
-        # plot concentration
-        sns.lineplot(ax=axs[0], x=time, y=self.tide_elev, color="b")
-        axs[0].set(ylabel="Tide Elevation (m)")
+        agg_max_mod_diff = agg_max - agg
+
+        sns.lineplot(ax=axs[0], x=time, y=tide_elev, color="blue", label="Tide")
+        sns.lineplot(ax=axs[0], x=time, y=land_elev, color="green", label="Land")
+        axs[0].set(ylabel="Elevation (m)")
         axs[0].set(xticklabels=[])
 
-        sns.lineplot(ax=axs[1], x=time, y=self.conc, color="r")
+        sns.lineplot(ax=axs[1], x=time, y=conc, color="red")
         axs[1].set(ylabel="Concentration (g/L)",)
         axs[1].set(xticklabels=[])
 
-        sns.lineplot(ax=axs[2], x=time, y=self.land_elev, color="g")
-        axs[2].set(ylabel="Land Elevation $\Delta$ (mm)", xlabel="Time (min)")
+        sns.lineplot(
+            ax=axs[2], x=time, y=agg_max, color="red", label="Max",
+        )
+        sns.lineplot(
+            ax=axs[2],
+            x=time,
+            y=agg,
+            label="Modeled",
+            marker="o",
+            linestyle=(0, (1, 10)),
+        )
+        axs[2].set(ylabel="Aggradation (m)")
+        axs[2].set(xticklabels=[])
+        axs[2].ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+
+        sns.lineplot(ax=axs[3], x=time, y=agg_max_mod_diff, color="black")
+        axs[3].set(ylabel="Difference (m)\nMax - Modeled", xlabel="Time (min)")
+        axs[3].ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+        axs[3].fill_between(
+            x=time,
+            y1=agg_max_mod_diff,
+            where=agg_max_mod_diff >= 0.0,
+            color="green",
+            alpha=0.3,
+        )
+        axs[3].fill_between(
+            x=time,
+            y1=agg_max_mod_diff,
+            where=agg_max_mod_diff < 0,
+            color="red",
+            alpha=0.3,
+        )
 
         for ax in axs:
-            ax.axvline((self.slack_time), color="k", linestyle="--")
+            ax.ticklabel_format(axis="y", useOffset=False)
 
 
 class Inundation:
-    def __init__(
-        self, index, tide_elev, land_elev_init, params,
-    ):
+    def __init__(self, index, tide_elev, land_elev_init, params, seed=None):
         self.index = index
         self.tide_elev = tide_elev
         self.land_elev_init = land_elev_init
         self.params = params
+        self.seed = seed
         self.result = None
 
     def __repr__(self):
@@ -310,7 +391,7 @@ class Inundation:
 
     @property
     def tide_elev_func(self):
-        return InterpolatedUnivariateSpline(x=self.index, y=self.tide_elev)
+        return InterpolatedUnivariateSpline(x=self.index, y=self.tide_elev, k=4, ext=2)
 
     @property
     def pos_start(self):
@@ -326,7 +407,7 @@ class Inundation:
 
     @property
     def period(self):
-        return self.index[-1] - self.index[0]
+        return self.index[-1]
 
     @property
     def tide_elev_slack(self):
@@ -336,17 +417,15 @@ class Inundation:
     def solver_args(self):
         args = namedtuple(
             "aggrade_args",
-            ["dZdt_func", "conc_bound", "settle_rate", "bulk_dens", "min_depth"],
+            ["tide_func", "conc_bound", "settle_rate", "bulk_dens", "min_depth"],
         )
-        return [
-            args(
-                dZdt_func=self.tide_elev_func.derivative(),
-                conc_bound=self.params.conc_bound,
-                settle_rate=self.params.settle_rate,
-                bulk_dens=self.params.bulk_dens,
-                min_depth=self.params.min_depth,
-            )
-        ]
+        return args(
+            tide_func=self.tide_elev_func,
+            conc_bound=self.params.conc_bound,
+            settle_rate=self.params.settle_rate,
+            bulk_dens=self.params.bulk_dens,
+            min_depth=self.params.min_depth,
+        )
 
     def aggrade(self):
         self.result = InundationResult()
@@ -355,70 +434,57 @@ class Inundation:
         flood = solve_ivp(
             fun=aggrade_flood,
             t_span=[self.pos_start, self.pos_slack],
-            y0=[self.tide_elev[0], self.params.conc_init, self.land_elev_init],
+            y0=[self.tide_elev[0], self.params.conc_init, self.land_elev_init, 0.0,],
             method=self.params.method,
             dense_output=self.params.dense_output,
-            args=self.solver_args,
+            args=[self.solver_args],
         )
-        flood = LimbResult(flood)
-        flood.degradation = (
-            self.pos_slack - self.pos_start
-        ) * self.params.linear_rate_sec
+        flood = LimbResult(
+            result=flood,
+            limb="flood",
+            params=self.params,
+            pos_start=self.pos_start,
+            pos_end=self.pos_slack,
+        )
 
-        assert flood.success is True, "[t={}] Flood integration failed!".format(
-            self.pos_start
-        )
-        assert (
-            flood.tide_elev >= flood.land_elev
-        ).all(), "[t={}] Depth cannot be negative!\ndepths={}".format(
-            self.pos_start, self.tide_elev_func(flood.time) - flood.land_elev
-        )
-        assert (
-            flood.conc[:-1] >= 0
-        ).all(), "[t={}] Concentration cannot be negative!\nconc={}".format(
-            self.pos_start, flood.conc
-        )
         self.result.flood = flood
 
         # Integrate ebb limb
         ebb = solve_ivp(
             fun=aggrade_ebb,
             t_span=[self.pos_slack, self.pos_end],
-            y0=[self.tide_elev_slack, flood.y[1][-1], flood.y[2][-1]],
+            y0=[
+                self.tide_elev_slack,
+                self.result.flood.conc[-1],
+                self.result.flood.land_elev[-1],
+                self.result.flood.agg_max[-1] - self.result.flood.agg[-1],
+            ],
             events=(zero_conc, zero_depth),
             method=self.params.method,
             dense_output=self.params.dense_output,
-            args=self.solver_args,
+            args=[self.solver_args],
         )
-        ebb = LimbResult(ebb)
-        ebb.degradation = (self.pos_end - self.pos_slack) * self.params.linear_rate_sec
-
-        assert ebb.success is True, "[t={}] Ebb integration failed!".format(
-            self.pos_slack
-        )
-        assert (
-            ebb.tide_elev >= ebb.land_elev
-        ).all(), "[t={}] Depth cannot be negative!\ndepths={}".format(
-            self.pos_slack, ebb.tide_elev - ebb.land_elev
-        )
-        assert (
-            ebb.conc[:-1] >= 0
-        ).all(), "[t={}] Concentration cannot be negative!\nconc={}".format(
-            self.pos_slack, ebb.conc
+        ebb = LimbResult(
+            result=ebb,
+            limb="ebb",
+            params=self.params,
+            pos_start=self.pos_slack,
+            pos_end=self.pos_end,
         )
 
         self.result.ebb = ebb
+        self.result.set_df()
 
 
 class Tides:
     def __init__(self, tide_ts=None, land_elev_init=None, params=None):
-        index = tide_ts.index.values
-        tide_elev = tide_ts.values
-        land_elev = land_elev_init - tide_ts.index.values * params.linear_rate_sec
-        self.df = tide_df(index=index, tide_elev=tide_elev, land_elev=land_elev)
+        self.index_offset = tide_ts.index.values[0]
+        self.index = tide_ts.index.values - self.index_offset
+        self.tide_elev = tide_ts.values
+        self.land_elev = land_elev_init + (self.index) * params.linear_rate_sec
         self.params = params
-        self.pos = 0
-        # self.remaining_inundations = len(self.zero_crossings) / 2
+        self.pos = self.index[0]
+        self.remaining_inundations = len(self.zero_crossings()) / 2
 
     def __repr__(self):
         return "{name} @{id:x} {attrs}".format(
@@ -426,15 +492,6 @@ class Tides:
             id=id(self) & 0xFFFFFF,
             attrs="".join("\n{}={!r}".format(k, v) for k, v in self.__dict__.items()),
         )
-
-    def subset(self, start=0, end=None, include_conc=True):
-        df = self.df.iloc[start:end]
-        if include_conc is True:
-            df.loc[:, "conc"] = 0.0
-        return df
-
-    def degradation(self, start=0, end=-1):
-        return self.df.land_elev.iat[start] - self.land_elev.iat[end]
 
     def zero_crossings(self, pos=None):
         if pos is None:
@@ -453,7 +510,7 @@ class Tides:
         return crossings + pos
 
     def find_inundation(self):
-        remaining_crossings = self.zero_crossings
+        remaining_crossings = self.zero_crossings()
         self.remaining_inundations = len(remaining_crossings) / 2
         while True:
             if self.remaining_inundations == 0:
@@ -464,21 +521,24 @@ class Tides:
                 end = self.index[-1]
             elif self.remaining_inundations >= 1:
                 start, end = remaining_crossings[0:2]
+                end = end
 
             if end - start < 4:
                 remaining_crossings = remaining_crossings[2:]
                 print("Small inundation at t={}->{}. Skipping.")
                 continue
 
-            subset = self.df.iloc[start:end]
-
-            assert (subset.tide_elev > subset.land_elev + self.params.min_depth).all()
+            assert (
+                self.tide_elev[start:end]
+                > self.land_elev[start:end] + self.params.min_depth
+            ).all(), "start={}, end={}, seed={}".format(start, end, self.pos)
 
             inundation = Inundation(
-                index=subset.index.values,
-                tide_elev=subset.tide_elev.values,
-                land_elev_init=subset.land_elev.values[0],
+                index=self.index[start:end] + self.index_offset,
+                tide_elev=self.tide_elev[start:end],
+                land_elev_init=self.land_elev[start],
                 params=self.params,
+                seed=self.pos,
             )
 
             return inundation
@@ -487,30 +547,28 @@ class Tides:
         if inundation is None:
             self.pos = self.index[-1]
             return
-        before = self.land_elev[: inundation.pos_end]
+        before = self.land_elev[: inundation.pos_end - self.index_offset]
         after = (
             inundation.result.land_elev[-1]
-            - (self.index[inundation.pos_end :] - self.index[inundation.pos_end])
+            + (
+                self.index[inundation.pos_end - self.index_offset :]
+                - self.index[inundation.pos_end - self.index_offset]
+            )
             * self.params.linear_rate_sec
         )
         new = np.append(before, after)
 
-        assert len(new) == len(
-            self.land_elev
-        ), "Length of new land elevation ({:.2e}) array does match length of old array ({:.2e}). Diff = {:.2e}".format(
-            len(new), len(self.land_elev), abs(len(new) - len(self.land_elev))
-        )
+        assert len(new) == len(self.land_elev)
 
         self.land_elev = new
-        self.set_df()
-        self.pos = inundation.pos_end + self.params.timestep
+        self.pos = inundation.pos_end - self.index_offset + self.params.timestep
 
 
 class SimulationResults:
     def __init__(self):
         self.inundations = []
-        self.aggradation = 0.0
-        self.degradation = 0.0
+        self.agg_total = 0.0
+        self.deg_total = 0.0
         self.df = tide_df()
 
     def __repr__(self):
@@ -525,23 +583,46 @@ class SimulationResults:
         return self.df.land_elev.iat[-1] - self.df.land_elev.iat[0]
 
     def update(self, tide: Tides, inundation: Inundation):
-        if inundation is not None:
-            tide_df = tide.df.loc[tide.pos : inundation.pos_start]
-            tide_degradation = tide_df.land_elev.iat[0] - tide_df.land_elev.iat[-1]
-            self.df = self.df.append([tide_df, inundation.result.df]).fillna(0.0)
-            self.aggradation = self.aggradation + inundation.result.aggradation
-            self.degradation = (
-                self.degradation + tide_degradation + inundation.result.degradation
-            )
+        if inundation is None:
+            tide_end = tide.index[-1] + tide.index_offset
+            inundation_result = None
+        else:
             self.inundations.append(inundation)
-        elif inundation is None:
-            tide_df = tide.df.loc[tide.pos :]
-            tide_degradation = tide_df.land_elev.iat[0] - tide_df.land_elev.iat[-1]
-            self.df = self.df.append(tide_df).fillna(0.0)
-            self.degradation = self.degradation + tide_degradation
+            inundation_result = inundation.result.df
+            tide_end = inundation.pos_start
+            self.agg_total = self.agg_total + inundation.result.agg_total
+            self.deg_total = self.deg_total + inundation.result.deg_total
 
-    def plot(self, frac=1.0):
-        self.df.sample(frac=frac).sort_index().plot()
+        tide_result = tide_df(
+            index=tide.index[
+                tide.pos - tide.index_offset : tide_end - tide.index_offset
+            ],
+            tide_elev=tide.tide_elev[
+                tide.pos - tide.index_offset : tide_end - tide.index_offset
+            ],
+            land_elev=tide.land_elev[
+                tide.pos - tide.index_offset : tide_end - tide.index_offset
+            ],
+            conc=np.zeros(
+                len(
+                    tide.index[
+                        tide.pos - tide.index_offset : tide_end - tide.index_offset
+                    ]
+                )
+            ),
+        )
+        self.deg_total = self.deg_total + (
+            tide.land_elev[tide.pos - tide.index_offset]
+            - tide.land_elev[tide_end - tide.index_offset]
+        )
+
+        self.df = self.df.append([tide_result, inundation_result])
+
+    def plot(self, columns=None, frac=1.0):
+        if columns is None:
+            self.df.sample(frac=frac).sort_index().plot()
+        else:
+            self.df[columns].sample(frac=frac).sort_index().plot()
 
 
 class Simulation:
@@ -559,7 +640,7 @@ class Simulation:
         sub_rate,
         slr,
         solver_method="RK45",
-        runs=1,
+        years=1,
         min_depth=0.0,
         dense_output=False,
     ):
@@ -592,9 +673,8 @@ class Simulation:
         self.tides = Tides(
             tide_ts=tide_ts, land_elev_init=land_elev_init, params=self.params
         )
-        self.run = 0
-        self.n = 0
-        self.runs = runs
+        self.year = 0
+        self.years = years
         self.start_time = None
         self.end_time = None
         self.pbar = None
@@ -606,55 +686,58 @@ class Simulation:
             attrs="".join("\n{}={!r}".format(k, v) for k, v in self.__dict__.items()),
         )
 
-    def step(self, steps=1):
-        max_step = self.n + steps
-        while self.n < max_step:
-            inundation = self.tides.find_inundation()
-            try:
-                inundation.aggrade()
-                self.pbar.total = (self.pbar.n + self.tides.remaining_inundations) * (
-                    self.runs - self.run
-                )
-                self.pbar.update(n=1.0)
-            except AttributeError:
-                pass
+    def step(self):
+        inundation = self.tides.find_inundation()
+        if inundation:
+            inundation.aggrade()
+            self.pbar.update(n=1.0)
+        self.results.update(tide=self.tides, inundation=inundation)
+        self.tides.update(inundation=inundation)
 
-            self.results.update(tide=self.tides, inundation=inundation)
-            self.tides.update(inundation=inundation)
-            self.n += 1
-
-    def run_one(self):
-        while self.tides.pos < self.tides.index[-1]:
-            self.step()
-        self.run += 1
-
-    def run_all(self):
-        self.start_time = time.perf_counter()
-        self.pbar = tqdm(
-            total=self.tides.remaining_inundations * self.runs,
-            leave=True,
-            position=0,
-            unit="inundations",
-            desc="Progress",
-        )
-        while self.run < self.runs:
-            self.run_one()
-            offset = (len(self.tides.index) * self.params.timestep) * self.run
+    def run(self, steps):
+        while self.year < self.years:
+            while self.tides.pos < self.tides.index[-1]:
+                self.step()
+                if self.pbar.n == self.pbar.total:
+                    self.step()
+                    return
+                if steps is None:
+                    self.pbar.total = (
+                        self.pbar.n + self.tides.remaining_inundations
+                    ) * (self.years - self.year)
+            self.year += 1
+            offset = self.tides.index[-1] + self.params.timestep
             tide_ts = pd.Series(
-                data=self.tides.df.tide_elev.values,
-                index=self.tides.df.index.values + offset,
+                data=self.tides.tide_elev + self.params.slr,
+                index=self.tides.index + offset,
             )
             self.tides = Tides(
                 tide_ts=tide_ts,
                 land_elev_init=self.results.df.land_elev.iat[-1],
                 params=self.params,
             )
+
+    def _initialize(self, steps=None):
+        self.start_time = time.perf_counter()
+        self.pbar = tqdm(leave=True, position=0, unit="inundation", desc="Progress",)
+        if steps:
+            self.pbar.total = float(steps)
+        else:
+            self.pbar.total = self.tides.remaining_inundations * self.years
+
+    def _uninitialize(self):
         self.end_time = time.perf_counter()
+        self.pbar.close()
         self.print_results()
+
+    def simulate(self, steps=None):
+        self._initialize(steps=steps)
+        self.run(steps=steps)
+        self._uninitialize()
 
     @property
     def runtime(self):
-        return time.strftime("%H:%M:%S", time.gmtime(self.end_time - self.end_time))
+        return time.strftime("%H:%M:%S", time.gmtime(self.end_time - self.start_time))
 
     def print_results(self):
         print("-" * 40)
@@ -676,14 +759,14 @@ class Simulation:
         print("-" * 40)
         print(
             "{:<25} {:< 10.3f} {:>2}".format(
-                "Aggradation: ", self.results.aggradation * 100, "cm"
+                "Aggradation: ", self.results.agg_total * 100, "cm"
             )
         )
         print(
             "{:<25} {:<10.3f} {:>2}".format(
-                "Degradation: ", self.results.degradation * 100, "cm"
+                "Degradation: ", self.results.deg_total * 100, "cm"
             )
         )
         print("-" * 40)
-        print("{:<25} {:>12}".format("Runtime: ", self.runtime,))
+        print("{:<25} {:>12}".format("Runtime: ", self.runtime))
 
