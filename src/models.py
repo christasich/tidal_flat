@@ -538,7 +538,6 @@ class SimulationResults:
         else:
             self.df[columns].sample(frac=frac).sort_index().plot()
 
-
 class TidalFlat:
     def __init__(
         self,
