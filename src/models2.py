@@ -1,4 +1,5 @@
 from logging import setLogRecordFactory
+from termios import N_MOUSE
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -33,7 +34,7 @@ class TidalFlat:
     @property
     def linear_rate_sec(self):
         return (
-            (self.org_rate_yr + self.comp_rate_yr + self.sub_rate_yr)
+            abs(self.org_rate_yr - self.comp_rate_yr - self.sub_rate_yr)
             / 365
             / 24
             / 60
@@ -61,18 +62,18 @@ class TidalFlat:
         self.comp_rate_yr = comp_rate_yr
         self.sub_rate_yr = sub_rate_yr
         self.slr_yr = slr_yr
-        self.timestep = np.int(pd.to_timedelta(tide_ts.index.freq).total_seconds())
-        self.ts_len = len(tide_ts)
-        self.tide_ts = pd.Series(
-            data=tide_ts.values,
-            index=pd.RangeIndex(start=0, stop=self.ts_len, step=self.timestep,),
-        )
+        self.tide_ts = tide_ts
         self.land_elev = land_elev_init
-        self.pos = self.tide_ts.index.values[0]
+        self.pos = 0
         self.year = 0
-        self.remaining_inundations = len(self.zero_crossings()) / 2
         self.inundations = []
-        self.results = pd.DataFrame(columns=["tide_elev", "land_elev"])
+        self.pbar = tqdm(
+            total=int(len(self.tide_ts) / 60 / 60 / 24),
+            unit="day",
+            position=0,
+            leave=True,
+            desc="Progress",
+        )
 
     def __repr__(self):
         return "{name} @{id:x} {attrs}".format(
@@ -81,112 +82,97 @@ class TidalFlat:
             attrs="".join("\n{}={!r}".format(k, v) for k, v in self.__dict__.items()),
         )
 
-    def land_elev_degraded(self, pos_start=None, pos_end=None):
-        if pos_start is None:
-            pos_start = self.pos
-        if pos_end is None:
-            pos_end = self.tide_ts.index[-1]
-        index = self.tide_ts.loc[pos_start:pos_end].index.values
-        return self.land_elev + (index - index[0]) * self.linear_rate_sec
-
-    @property
-    def offset(self):
-        return self.ts_len * self.year
-
-    def zero_crossings(self):
-        tide_elev = self.tide_ts[self.pos :].values
-        land_elev = self.land_elev_degraded()
-        depth = tide_elev - land_elev
-        index = np.where(np.diff(np.signbit(depth)))[0]
-        positions = np.where(depth[index] > 0, index, index + 1)
-        crossings_pos = positions + self.pos
-        assert (depth[positions] > 0).all()
-        crossings_land_elev = land_elev[positions]
-        crossings = np.array(
-            list(zip(crossings_pos, crossings_land_elev)), dtype=object
+    def make_subset(self):
+        day = 60 * 60 * 24
+        week = day * 7
+        month = day * 30
+        search_distance = day
+        end = self.pos + search_distance
+        subset = self.tide_ts.loc[self.pos : end].to_frame(name="tide_elev")
+        subset["land_elev"] = (
+            self.land_elev - (subset.index - subset.index[0]) * self.linear_rate_sec
         )
-        return crossings
+        num_crossings = len(
+            np.where(np.diff(np.signbit(subset.tide_elev - subset.land_elev)))[0]
+        )
+        while num_crossings < 2:
+            if subset.index[-1] == self.tide_ts.index[-1] and num_crossings == 1:
+                print("Warning: Subset finishes above platform.")
+                return subset
+            elif subset.index[-1] == self.tide_ts.index[-1] and num_crossings == 0:
+                return None
+            else:
+                end = end + search_distance
+                subset = self.tide_ts.loc[self.pos : end].to_frame(name="tide_elev")
+                subset["land_elev"] = (
+                    self.land_elev
+                    - (subset.index - subset.index[0]) * self.linear_rate_sec
+                )
+                num_crossings = len(
+                    np.where(np.diff(np.signbit(subset.tide_elev - subset.land_elev)))[
+                        0
+                    ]
+                )
+        return subset
 
     def find_inundation(self):
-        remaining_crossings = self.zero_crossings()
-        self.remaining_inundations = len(remaining_crossings) / 2
-        while True:
-            if self.remaining_inundations == 0:
-                return None
-
-            pos_start = remaining_crossings[0][0]
-            land_elev_init = remaining_crossings[0][1]
-            if self.remaining_inundations == 0.5:
-                print("Warning: Partial inundation cycle!")
-                pos_end = self.tide_ts.index[-1]
-            elif self.remaining_inundations >= 1:
-                pos_end = remaining_crossings[1][0]
-
-            if pos_end - pos_start < 4:
-                remaining_crossings = remaining_crossings[2:]
-                print("Small inundation at t={}->{}. Skipping.")
-                continue
-            inundation = Inundation(
-                tide_ts=self.tide_ts[pos_start:pos_end],
-                land_elev_init=land_elev_init,
-                conc_bound=self.conc_bound,
-                settle_rate=self.settle_rate,
-                bulk_dens=self.bulk_dens,
-                linear_rate_sec=self.linear_rate_sec,
-            )
-
-            return inundation
-
-    def inundate(self, inundation):
-        inundation.integrate()
-        self.inundations.append(inundation)
-        self.land_elev = inundation.df.land_elev.values[-1]
+        subset = self.make_subset()
+        if subset is None:
+            return None
+        pos_start = (subset.tide_elev > subset.land_elev).idxmax()
+        pos_end = (
+            subset.loc[pos_start:].tide_elev > subset.loc[pos_start:].land_elev
+        ).idxmin()
+        assert pos_end > pos_start
+        land_elev_init = subset.land_elev.loc[pos_start]
+        inundation = Inundation(
+            tide_ts=subset.tide_elev.loc[pos_start:pos_end],
+            land_elev_init=land_elev_init,
+            conc_bound=self.conc_bound,
+            settle_rate=self.settle_rate,
+            bulk_dens=self.bulk_dens,
+            linear_rate_sec=self.linear_rate_sec,
+            seed=self.pos,
+        )
+        return inundation
 
     def step(self):
         inundation = self.find_inundation()
         if inundation:
-            self.inundate(inundation)
-        self.update(inundation)
+            self.inundations.append(inundation)
+            inundation.integrate()
+            self.update(inundation)
+        else:
+            self.land_elev = (
+                self.land_elev
+                - (self.tide_ts.index[-1] - self.pos) * self.linear_rate_sec
+            )
+            self.pos = self.tide_ts.index[-1]
+            self.pbar.n = int(self.pos / 60 / 60 / 24 + 1)
+            self.pbar.refresh()
+            self.pbar.close()
 
     def run(self, steps=np.inf):
         n = 0
-        pbar = tqdm(
-            leave=True,
-            position=0,
-            unit="inundation",
-            desc="Progress",
-            total=self.remaining_inundations,
-        )
-        while self.pos < self.ts_len:
+        while self.pos < self.tide_ts.index[-1]:
             if n == steps:
                 return
             self.step()
-            pbar.total = pbar.n + self.remaining_inundations - 1
-            pbar.update()
             n += 1
-        self.year += 1
-        # self.update()
 
     def update(self, inundation):
-        if inundation:
-            df1 = self.tide_ts.loc[self.pos : inundation.pos_start].to_frame(
-                name="tide_elev"
-            )
-            df1["land_elev"] = self.land_elev_degraded(
-                pos_start=self.pos, pos_end=inundation.pos_start
-            )
-            df2 = inundation.df[["tide_elev", "land_elev"]]
-            self.results = pd.concat([self.results, df1, df2])
-            self.pos = inundation.pos_end + self.timestep * 2
-        else:
-            df = self.tide_ts.loc[self.pos :].to_frame(name="tide_elev")
-            df["land_elev"] = self.land_elev_degraded(pos_start=self.pos)
-            self.results = pd.concat([self.results, df])
-            self.pos = self.tide_ts.index[-1] + self.timestep
+        self.land_elev = inundation.result.y[2][-1]
+        self.pos = inundation.pos_end + 1
+        self.pbar.n = int(self.pos / 60 / 60 / 24 + 1)
+        self.pbar.refresh()
 
-    # def update(self):
-    #     self.tide_ts = self.tide_ts + self.slr_yr
-    #     self.tide_ts.index = self.tide_ts.index + self.offset
+
+class OdeResults:
+    def __init__(
+        self, t, y,
+    ):
+        self.t = t
+        self.y = y
 
 
 class Inundation:
@@ -198,6 +184,7 @@ class Inundation:
         settle_rate,
         bulk_dens,
         linear_rate_sec,
+        seed,
     ):
         self.tide_ts = tide_ts
         self.land_elev_init = land_elev_init
@@ -207,7 +194,7 @@ class Inundation:
         self.tide_elev_slack = np.max(self.tide_ts.values)
         self.period = self.pos_end - self.pos_start
         tide_elev_func = InterpolatedUnivariateSpline(
-            x=self.tide_ts.index.values, y=self.tide_ts.values, k=4, ext=2,
+            x=self.tide_ts.index.values, y=self.tide_ts.values, k=4,
         )
         params = namedtuple(
             "params",
@@ -226,11 +213,11 @@ class Inundation:
             bulk_dens=bulk_dens,
             linear_rate_sec=linear_rate_sec,
         )
-        self.flood = None
-        self.ebb = None
         self.result = None
         self.df = None
-        self._res_tup = namedtuple("result", ["t", "y"])
+        self.seed = seed
+        self.aggr_total = None
+        self.degr_total = None
 
     def __repr__(self):
         return "{name} @{id:x} {attrs}".format(
@@ -260,25 +247,26 @@ class Inundation:
         )
         if self.ebb.status == 1:
             solver_end_time = self.result.t[-1]
-            solver_end_pos = int(np.ceil(solver_end_time))
-            solver_end_diff = solver_end_pos - solver_end_time
-            df2 = self.tide_ts.loc[solver_end_pos:].to_frame(name="tide_elev")
-            remaining_time = df2.index.values - df2.index[0]
+            next_pos = int(np.ceil(solver_end_time))
+            solver_end_diff = next_pos - solver_end_time
+            small_degr = solver_end_diff * abs(self.params.linear_rate_sec)
+            df2 = self.tide_ts.loc[next_pos:].to_frame(name="tide_elev")
+            df2["land_elev"] = df.land_elev.values[-1]
             df2["conc"] = 0.0
             df2["aggr"] = df.aggr.values[-1]
             df2["aggr_max"] = df.aggr_max.values[-1]
-            degr = (
-                abs(self.params.linear_rate_sec) * solver_end_diff
-                + abs(self.params.linear_rate_sec) * remaining_time
+            df2["degr"] = (
+                df.degr.values[-1]
+                + small_degr
+                + abs(self.params.linear_rate_sec) * (df2.index - df2.index[0])
             )
-            df2["land_elev"] = df.land_elev.values[-1] - degr
-            df2["degr"] = df.degr.values[-1] + degr
             df = pd.concat([df, df2])
 
+        self.degr_total = df.degr.values[-1]
         self.df = df
 
     @staticmethod
-    def solve_odes(
+    def solve_flood(
         t, y, params,
     ):
         tide_elev = y[0]
@@ -291,15 +279,11 @@ class Inundation:
         d1dt_degr = abs(params.linear_rate_sec)
         d1dt_land_elev = d1dt_aggr - d1dt_degr
         d1dt_depth = d1dt_tide_elev - d1dt_land_elev
-        if d1dt_depth > 0.0:
-            d1dt_conc = (
-                -(params.settle_rate * conc) / depth
-                - 1 / depth * (conc - params.conc_bound) * d1dt_depth
-            )
-            d1dt_aggr_max = params.conc_bound * d1dt_depth / params.bulk_dens
-        else:
-            d1dt_conc = -(params.settle_rate * conc) / depth
-            d1dt_aggr_max = 0.0
+        d1dt_conc = (
+            -(params.settle_rate * conc) / depth
+            - 1 / depth * (conc - params.conc_bound) * d1dt_depth
+        )
+        d1dt_aggr_max = params.conc_bound * d1dt_depth / params.bulk_dens
 
         return [
             d1dt_tide_elev,  # 0
@@ -307,7 +291,32 @@ class Inundation:
             d1dt_land_elev,  # 2
             d1dt_aggr,  # 3
             d1dt_aggr_max,  # 4
-            d1dt_degr,  # 5
+            d1dt_degr,
+        ]
+
+    @staticmethod
+    def solve_ebb(
+        t, y, params,
+    ):
+        tide_elev = y[0]
+        conc = y[1]
+        land_elev = y[2]
+        depth = tide_elev - land_elev
+
+        d1dt_tide_elev = params.tide_elev_func.derivative()(t)
+        d1dt_aggr = params.settle_rate * conc / params.bulk_dens
+        d1dt_degr = abs(params.linear_rate_sec)
+        d1dt_land_elev = d1dt_aggr - d1dt_degr
+        d1dt_conc = -(params.settle_rate * conc) / depth
+        d1dt_aggr_max = 0.0
+
+        return [
+            d1dt_tide_elev,  # 0
+            d1dt_conc,  # 1
+            d1dt_land_elev,  # 2
+            d1dt_aggr,  # 3
+            d1dt_aggr_max,  # 4
+            d1dt_degr,
         ]
 
     def zero_conc(t, y, params):
@@ -329,16 +338,18 @@ class Inundation:
     def integrate(self, method="DOP853", dense_output=True):
 
         self.flood = solve_ivp(
-            fun=self.solve_odes,
+            fun=self.solve_flood,
             t_span=[self.pos_start, self.pos_slack],
             y0=[self.tide_ts.values[0], 0.0, self.land_elev_init, 0.0, 0.0, 0.0],
             method=method,
+            events=(self.zero_conc, self.zero_depth),
             dense_output=dense_output,
+            atol=(1e-6, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8),
             args=[self.params],
         )
 
         self.ebb = solve_ivp(
-            fun=self.solve_odes,
+            fun=self.solve_ebb,
             t_span=[self.pos_slack, self.pos_end],
             y0=[
                 self.tide_elev_slack,
@@ -349,15 +360,18 @@ class Inundation:
                 self.flood.y[5][-1],
             ],
             method=method,
+            events=(self.zero_conc, self.zero_depth),
             dense_output=dense_output,
-            events=(self.zero_depth, self.zero_conc),
+            atol=(1e-6, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8),
             args=[self.params],
         )
-        self.result = self._res_tup(
+
+        self.result = OdeResults(
             t=np.append(self.flood.t, self.ebb.t[1:]),
             y=np.append(self.flood.y, self.ebb.y[:, 1:], axis=1),
         )
 
+        self.aggr_total = self.result.y[3][-1]
         self._set_df()
         self._validate_result()
 
@@ -376,13 +390,6 @@ class Inundation:
         assert (
             self.result.y[4] >= self.result.y[3]
         ).all(), "[t={}] Overextraction detected!".format(self.pos_start)
-        assert np.isclose(
-            self.result.y[5][-1],
-            (self.result.t[-1] - self.result.t[0]) * abs(self.params.linear_rate_sec),
-        ), "{} - {}".format(
-            self.result.y[5][-1],
-            (self.result.t[-1] - self.result.t[0]) * abs(self.params.linear_rate_sec),
-        )
 
     def plot(self):
 
