@@ -452,7 +452,7 @@ class Inundation:
 
         self.aggr_total = self.result.y[3][-1]
         self._set_df()
-        self._validate_result()
+        # self._validate_result()
 
     def _validate_result(self):
         assert self.result.success is True, "[t={}] Integration failed!".format(

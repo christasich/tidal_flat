@@ -1,6 +1,6 @@
-from pathlib import Path
+import pathlib
 
-ROOT = Path.cwd().absolute()
+ROOT = pathlib.Path(__file__).parents[3]
 
 SECOND = 1
 MINUTE = SECOND * 60
