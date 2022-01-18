@@ -1,7 +1,12 @@
 from collections import namedtuple
 import inspect
-import logging
+import utide
+from matplotlib import dates as mdates
+from joblib import Parallel, delayed
+from tqdm.notebook import tqdm
 import pandas as pd
+import numpy as np
+import itertools as it
 from pyarrow import feather
 
 
@@ -14,8 +19,8 @@ def make_combos(**kwargs):
         if isinstance(value, (list, tuple, np.ndarray)) is False:
             kwargs.update({key: [value]})
     keys, value_tuples = zip(*kwargs.items())
-    combo_tuple = namedtuple("combos", keys)
-    combos = [combo_tuple(*values) for values in it.product(*value_tuples)]
+    combo_tuple = namedtuple("combos", ["n", *list(keys)])
+    combos = [combo_tuple(n, *values) for n, values in enumerate(it.product(*value_tuples))]
     return combos
 
 
@@ -38,7 +43,7 @@ def construct_filename(fn_format, **kwargs):
 
 def search_file(wdir, filename):
     """
-    Function that searches a directory for a filename and returns 0 the number
+    Function that searches a directory for a filename and returns the number
     of exact matches (0 or 1). If more than one file is found, the function
     will raise an exception.
     """
@@ -70,36 +75,24 @@ def missing_combos(wdir, fn_format, combos):
     return to_make
 
 
-def make_tide(params):
-    """
-    Function that accepts a namedtuple or dictionary object containing
-    the arguments: wdir, fn_format, run_length, dt, and slr. These values
-    are passed to the Rscript make_tides.R which creates a discretized tidal
-    curve with timesteps of dt and a total length of run_len. Sea level rise
-    is added to the curve using a yearly rate of SLR. The tidal data is stored in
-    wdir as a feather file for interopability between R and Python.
-    """
-    fn = construct_filename(
-        fn_format=params.fn_format,
-        run_len=params.run_len,
-        dt=int(pd.to_timedelta(params.dt).total_seconds()),
-        slr=params.slr,
-    )
-    if params.wdir.is_dir() is False:
-        params.wdir.mkdir()
+def make_tides(coef: utide._solve.Bunch, start:int, stop:int, freq: str, n_jobs=1, pbar=False):
 
-    R_command = "Rscript"
-    script_path = (root / "scripts" / "make_tides.R").absolute().as_posix()
-    args = [
-        str(params.run_len),
-        str(params.dt),
-        "{:.4f}".format(params.slr),
-        params.wdir.absolute().as_posix(),
-    ]
-    cmd = [R_command, script_path] + args
-    subprocess.check_output(cmd, universal_newlines=True)
-    msg = "Tide created: {0}".format(fn)
-    return msg
+    years = np.arange(start, stop, 1)
+    if pbar==True:
+        years = tqdm(years)
+
+    def one_year(year, coef, freq):
+        start = str(year)
+        end = str(year+1)
+        index = pd.date_range(start=start, end=end, closed="left", freq=freq, name="datetime")
+        time = mdates.date2num((index - pd.Timedelta("6 hours")).to_pydatetime())
+        elev = utide.reconstruct(t=time, coef=coef, verbose=False).h
+        
+        return(pd.Series(data=elev, index=index))
+
+    tides = Parallel(n_jobs=n_jobs)(delayed(one_year)(year=year, coef=coef, freq=freq) for year in years)
+    
+    return(pd.concat(tides))
 
 
 def load_tide(wdir, filename):
