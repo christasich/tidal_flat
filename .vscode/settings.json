@@ -2,5 +2,7 @@
     "jupyter.jupyterServerType": "local",
     "jupyter.disableJupyterAutoStart": true,
     "python.analysis.completeFunctionParens": true,
-    "jupyter.allowUnauthorizedRemoteConnection": true
+    "jupyter.allowUnauthorizedRemoteConnection": true,
+    "python.linting.flake8Enabled": true,
+    "python.linting.enabled": true
 }

@@ -8,6 +8,15 @@ import pandas as pd
 import numpy as np
 import itertools as it
 from pyarrow import feather
+import re
+from pathlib import Path
+
+
+import statsmodels.api as sm
+from sklearn.linear_model import LinearRegression
+from scipy.signal import find_peaks
+
+from .constants import *
 
 
 def make_combos(**kwargs):
@@ -95,13 +104,12 @@ def make_tides(coef: utide._solve.Bunch, start:int, stop:int, freq: str, n_jobs=
     return(pd.concat(tides))
 
 
-def load_tide(wdir, filename):
+def load_tide(path):
     """
     Function that loads the tidal curve constructed by make_tides.R
     and sets the index to the Datetime column and infers frequency.
     """
-    fp = wdir / filename
-    data = pd.read_feather(fp)
+    data = pd.read_feather(path)
     vals = data.elevation.values
     index = pd.DatetimeIndex(data.datetime, freq="infer")
     tides = pd.Series(data=vals, index=index, name="elevation")
@@ -139,3 +147,29 @@ def make_param_tuple(
         subsidence_rate=subsidence_rate,
     )
     return params
+
+def find_pv(x: np.ndarray | pd.Series, distance: int):
+
+    peaks = find_peaks(x=x, distance=distance)[0]
+    valleys = find_peaks(x=x*-1, distance=distance)[0]
+
+    return(peaks, valleys)
+
+def regress_ts(ts: pd.Series, freq: str | pd.Timedelta, ref_date: pd.Timestamp):
+
+    if isinstance(freq, str):
+        freq = pd.Timedelta(freq)
+
+    x = ((ts.index - ref_date) / freq).values.reshape(-1, 1)
+    y = ts.values.reshape(-1, 1)
+    lm = LinearRegression().fit(x, y)
+
+    return(lm, lm.coef_[0,0], lm.intercept_[0])
+
+def lowess_ts(data: pd.Series, window: pd.Timedelta=None):
+    endog = data.values
+    exog = (data.index - data.index[0]).total_seconds().astype(int).values
+    n = data.groupby(by=pd.Grouper(freq=window)).count().mean().round()
+    frac = n / len(data)
+    y = sm.nonparametric.lowess(endog=endog, exog=exog, frac=frac, is_sorted=True)[:,1]
+    return(pd.Series(data=y, index=data.index))
