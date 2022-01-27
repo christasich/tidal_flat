@@ -4,5 +4,6 @@
     "python.analysis.completeFunctionParens": true,
     "jupyter.allowUnauthorizedRemoteConnection": true,
     "python.linting.flake8Enabled": true,
-    "python.linting.enabled": true
+    "python.linting.enabled": true,
+    "jupyter.notebookFileRoot": "${workspaceFolder}"
 }
