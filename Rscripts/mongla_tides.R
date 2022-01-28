@@ -42,9 +42,9 @@ base_mod <- tidem(t = tides.sl)
 
 const <- data.frame(
   year = year(start),
-  name = base_mod@data$name, 
+  name = base_mod@data$name,
   freq = base_mod@data$freq,
-  amp = base_mod@data$amplitude, 
+  amp = base_mod@data$amplitude,
   phase = base_mod@data$phase,
   p_value = base_mod@data$p)|>
   as_tsibble(index = year, key = name)
@@ -54,7 +54,7 @@ for (i in 1978:2010){
   end <- start + days(365+120)
   subset <- data |>
     filter_index(toString(start)~toString(end))
-  
+
   tides.sl <- as.sealevel(
     elevation = subset$elevation,
     time = subset$datetime,
@@ -65,12 +65,12 @@ for (i in 1978:2010){
     GMTOffset = 6
   )
   mod <- tidem(t = tides.sl)
-  
+
   df <- data.frame(
       year = year(start),
-      name = mod@data$name, 
+      name = mod@data$name,
       freq = mod@data$freq,
-      amp = mod@data$amplitude, 
+      amp = mod@data$amplitude,
       phase = mod@data$phase,
       p_value = mod@data$p)|>
       as_tsibble(index = year, key = name)
@@ -108,7 +108,7 @@ remove(preds)
 for (i in 1977:2011){
   vals <- amps |>
     filter_index(i)
-  
+
   mod <- as.tidem(
     tRef = base_mod@data$tRef,
     latitude = latitude,
@@ -116,7 +116,7 @@ for (i in 1977:2011){
     amplitude = vals$amp,
     phase = base_mod@data$phase
   )
-  
+
   start <- as.POSIXct(paste(i, "-01-01", sep = ""), tz = "Asia/Dhaka")
   end <- as.POSIXct(paste(i, "-12-31", sep = ""), tz = "Asia/Dhaka")
   new <- tsibble(datetime = seq.POSIXt(start, end, by = dt), index = datetime) %>%
@@ -158,18 +158,18 @@ dygraph(plt_data, xlab = "Year", ylab = "Elevation") |>
 
 
 # write_feather(tides, 'data/interim/mongla_tides.feather')
-# 
-# combined |> 
+#
+# combined |>
 #   # filter(elevation > 0) |>
 #   mutate(diff = predicted-elevation) |>
 #   pull(diff) |>
 #   sum
-# 
-# 
+#
+#
 # year <- 2020
 # years <- 1
 # dt <- '5 min'
-# 
+#
 # index <- seq.POSIXt(as.POSIXct(paste(year, "-01-01 00:00:00", sep = ""), tz = "Asia/Dhaka"), as.POSIXct(paste(year, "-12-31 23:59:59", sep = ""), tz = "Asia/Dhaka"), by = dt)
 # tides <- tibble(datetime = index) |>
 #   as_tsibble(index = datetime) |>
@@ -187,5 +187,5 @@ dygraph(plt_data, xlab = "Year", ylab = "Elevation") |>
 #   tides <- bind_rows(tides, new)
 # }
 # tides <- as_tsibble(tides)
-# 
+#
 # write_feather(tides, 'data/interim/tides-50yr-10s.feather')

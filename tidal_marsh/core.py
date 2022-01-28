@@ -270,7 +270,7 @@ class Model:
                 self.results.land_elev.min() - self.results.land_elev.iat[0],
                 self.results.tide_elev.max() - self.results.land_elev.iat[0],
             ),
-            ylabel="$\Delta$ Elevation (m)",
+            ylabel=r"$\Delta$ Elevation (m)",
         )
         h1, l1 = ax1.get_legend_handles_labels()
         h2, l2 = ax2.get_legend_handles_labels()
@@ -433,7 +433,7 @@ class Inundation:
         # self._validate_result()
 
     def _validate_result(self):
-        assert self.result.success is True, "[t={}] Integration failed!\nparams={}".format(self.t_start, self.params)
+        assert self.result.success is True, f"[t={self.t_start}] Integration failed!\nparams={self.params}"
         assert (self.result.y[3] >= 0.0).all(), "[t={}] Negative aggradation detected!\naggr={}".format(
             self.t_start, self.results.y[3]
         )
@@ -452,7 +452,7 @@ class Inundation:
         fig, axs = plt.subplots(nrows=4, ncols=1, tight_layout=True)
         fig.set_figheight(15)
         fig.set_figwidth(15)
-        fig.suptitle("Inundation at {}".format(self.tides.datetime.iat[0]), fontsize=16)
+        fig.suptitle(f"Inundation at {self.tides.datetime.iat[0]}", fontsize=16)
 
         time = (self.df.index - self.df.index[0]) / constants.MINUTE
         mod_end = (self.result.t[-1] - self.df.index[0]) / constants.MINUTE

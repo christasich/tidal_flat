@@ -1,4 +1,3 @@
-from loguru import logger
 import inspect
 import itertools as it
 import re
@@ -7,11 +6,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
 import statsmodels.api as sm
 import utide
 from joblib import Parallel, delayed
-
+from loguru import logger
 from matplotlib import dates as mdates
 from pyarrow import feather
 from scipy.signal import find_peaks
@@ -44,8 +42,8 @@ def construct_filename(fn_format, **kwargs):
     fn_var_num = len(re.findall(r"\{.*?\}", fn_format))
     if kwarg_num != fn_var_num:
         raise Exception(
-            "Format error: Given {0} kwargs, but "
-            "filename format has {1} sets of "
+            "Format error: Given {} kwargs, but "
+            "filename format has {} sets of "
             "braces.".format(kwarg_num, fn_var_num)
         )
     fn = fn_format.format(*kwargs.values())

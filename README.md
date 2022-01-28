@@ -14,7 +14,7 @@ Project Organization
     │   ├── interim        <- Intermediate data that has been transformed.
     |   |   ├── sutarkhali_pressure.csv     <- maniuplated raw export of pressure values from sutarkhali_data.mat.
     |   |   |                                  The original dataset had a sensor error from 09-Sep-2015 16:40:00 to 09-Sep-2015 17:50:00.
-    |   |   |                                  This resulted in lower than expected tide heights. 4.19m 
+    |   |   |                                  This resulted in lower than expected tide heights. 4.19m
     |   |   ├── sutarkhali_ssc.csv          <- raw export of suspended sediment cocentration values from sutarkhali_data.mat.
     |   |   ├──
     |   |   ├──

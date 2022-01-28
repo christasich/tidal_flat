@@ -25,12 +25,12 @@ data <- read.csv("data/raw/mongla_tides.csv") |>
 #   mutate(datetime = ymd_hms(datetime)) |>
 #   distinct(datetime, .keep_all = TRUE) |>
 #   as_tsibble(index = datetime)
-# 
+#
 # other <- read.csv("data/raw/mongla_jan_2015-mar_2016.csv") |>
 #   mutate(datetime = ymd_hms(datetime)) |>
 #   distinct(datetime, .keep_all = TRUE) |>
 #   as_tsibble(index = datetime)
-# 
+#
 # data <- bwd |>
 #   full_join(iwm, by = "datetime") |>
 #   full_join(other, by = "datetime") |>
@@ -44,12 +44,12 @@ latitude <- 22.4833
 
 remove(preds)
 for (i in 1977:2010){
-  
+
   start <- as.POSIXct(paste(i, "-01-01", sep=""), tz = "Asia/Dhaka")
   end <- start + days(365+120)
   subset <- data |>
     filter_index(toString(start)~toString(end))
-  
+
   tides.sl <- as.sealevel(
     elevation = subset$elevation,
     time = subset$datetime,
@@ -59,16 +59,16 @@ for (i in 1977:2010){
     latitude = latitude,
     GMTOffset = 6
   )
-  
+
   mod <- tidem(tides.sl)
-  
-  const <- data.frame("name" = mod@data$name, 
+
+  const <- data.frame("name" = mod@data$name,
                       "freq" = mod@data$freq,
-                      "amp" = mod@data$amplitude, 
+                      "amp" = mod@data$amplitude,
                       "phase" = mod@data$phase,
                       "p_value" = mod@data$p) |>
     as_tibble()
-  
+
   start <- as.POSIXct(paste(i, "-01-01", sep = ""), tz = "Asia/Dhaka")
   end <- as.POSIXct(paste(i, "-12-31 23:59:59", sep = ""), tz = "Asia/Dhaka")
   new <- tsibble(datetime = seq.POSIXt(start, end, by = dt), index = datetime) %>%
@@ -115,18 +115,18 @@ t = seq(0, 1, 0.1)
 
 
 # write_feather(tides, 'data/interim/mongla_tides.feather')
-# 
-# combined |> 
+#
+# combined |>
 #   # filter(elevation > 0) |>
 #   mutate(diff = predicted-elevation) |>
 #   pull(diff) |>
 #   sum
-# 
-# 
+#
+#
 # year <- 2020
 # years <- 1
 # dt <- '5 min'
-# 
+#
 # index <- seq.POSIXt(as.POSIXct(paste(year, "-01-01 00:00:00", sep = ""), tz = "Asia/Dhaka"), as.POSIXct(paste(year, "-12-31 23:59:59", sep = ""), tz = "Asia/Dhaka"), by = dt)
 # tides <- tibble(datetime = index) |>
 #   as_tsibble(index = datetime) |>
@@ -144,5 +144,5 @@ t = seq(0, 1, 0.1)
 #   tides <- bind_rows(tides, new)
 # }
 # tides <- as_tsibble(tides)
-# 
+#
 # write_feather(tides, 'data/interim/tides-50yr-10s.feather')

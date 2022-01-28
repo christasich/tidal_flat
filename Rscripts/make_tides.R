@@ -124,9 +124,9 @@ tides.sl <- as.sealevel(
 
 mod <- tidem(t = tides.sl)
 
-const <- data.frame("name" = mod@data$name, 
+const <- data.frame("name" = mod@data$name,
                     "freq" = mod@data$freq,
-                    "amp" = mod@data$amplitude, 
+                    "amp" = mod@data$amplitude,
                     "phase" = mod@data$phase,
                     "p_value" = mod@data$p) |>
   as_tibble() |>
@@ -160,9 +160,9 @@ tides <- subset |>
   mutate(model = predict(mod)) |>
   mutate(time = as.numeric(difftime(datetime, mod@data$tRef, units="mins")) / 10)
 
-const <- data.frame("name" = mod@data$name, 
+const <- data.frame("name" = mod@data$name,
                     "freq" = mod@data$freq,
-                    "amp" = mod@data$amplitude, 
+                    "amp" = mod@data$amplitude,
                     "phase" = mod@data$phase,
                     "p_value" = mod@data$p) |>
   as_tibble() |>

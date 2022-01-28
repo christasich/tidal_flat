@@ -322,7 +322,7 @@ class Tides:
                 fontweight="bold",
             )
 
-        colLabels = ["$\Delta\zeta\ mm\ yr^{-1}$"]
+        colLabels = [r"$\Delta\zeta\ mm\ yr^{-1}$"]
         colColors = ["lightgray"]
         cellText = (df.loc["coef"] * 1000).astype(float).round(decimals=1).values.reshape(-1, 1)
         rowLabels = df.columns
