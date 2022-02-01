@@ -20,57 +20,57 @@ from .constants import *
 
 
 def make_combos(**kwargs):
-    """
+    '''
     Function that takes n-kwargs and returns a list of namedtuples
     for each possible combination of kwargs.
-    """
+    '''
     for key, value in kwargs.items():
         if isinstance(value, (list, tuple, np.ndarray)) is False:
             kwargs.update({key: [value]})
     keys, value_tuples = zip(*kwargs.items())
-    combo_tuple = namedtuple("combos", ["n", *list(keys)])
+    combo_tuple = namedtuple('combos', ['n', *list(keys)])
     combos = [combo_tuple(n, *values) for n, values in enumerate(it.product(*value_tuples))]
     return combos
 
 
 def construct_filename(fn_format, **kwargs):
-    """
+    '''
     Function that takes a string with n-number of format placeholders (e.g. {0]})
     and uses the values from n-kwargs to populate the string.
-    """
+    '''
     kwarg_num = len(kwargs)
-    fn_var_num = len(re.findall(r"\{.*?\}", fn_format))
+    fn_var_num = len(re.findall(r'\{.*?\}', fn_format))
     if kwarg_num != fn_var_num:
         raise Exception(
-            "Format error: Given {} kwargs, but "
-            "filename format has {} sets of "
-            "braces.".format(kwarg_num, fn_var_num)
+            'Format error: Given {} kwargs, but '
+            'filename format has {} sets of '
+            'braces.'.format(kwarg_num, fn_var_num)
         )
     fn = fn_format.format(*kwargs.values())
     return fn
 
 
 def search_file(wdir, filename):
-    """
+    '''
     Function that searches a directory for a filename and returns the number
     of exact matches (0 or 1). If more than one file is found, the function
     will raise an exception.
-    """
+    '''
     if len(list(Path(wdir).glob(filename))) == 0:
         found = 0
     elif len(list(Path(wdir).glob(filename))) == 1:
         found = 1
     elif len(list(Path(wdir).glob(filename))) > 1:
-        raise Exception("Found too many files that match.")
+        raise Exception('Found too many files that match.')
     return found
 
 
 def missing_combos(wdir, fn_format, combos):
-    """
+    '''
     Function that creates filenames for a list of combinations and
     then searches a directory for the filenames. The function returns
     a list of combinations that were not found.
-    """
+    '''
     to_make = []
     for combo in combos:
         fn = construct_filename(
@@ -93,8 +93,8 @@ def make_tides(coef: utide._solve.Bunch, start: int, stop: int, freq: str, n_job
     def one_year(year, coef, freq):
         start = str(year)
         end = str(year + 1)
-        index = pd.date_range(start=start, end=end, closed="left", freq=freq, name="datetime")
-        time = mdates.date2num((index - pd.Timedelta("6 hours")).to_pydatetime())
+        index = pd.date_range(start=start, end=end, closed='left', freq=freq, name='datetime')
+        time = mdates.date2num((index - pd.Timedelta('6 hours')).to_pydatetime())
         elev = utide.reconstruct(t=time, coef=coef, verbose=False).h
 
         return pd.Series(data=elev, index=index)
@@ -112,12 +112,12 @@ def make_param_tuple(
     bulk_den,
     start_elev=0,
     tidal_amplifier=1,
-    conc_method="CT",
+    conc_method='CT',
     organic_rate=0,
     compaction_rate=0,
     subsidence_rate=0,
 ):
-    param_tuple = namedtuple("param_tuple", inspect.getfullargspec(make_param_tuple).args)
+    param_tuple = namedtuple('param_tuple', inspect.getfullargspec(make_param_tuple).args)
     params = param_tuple(
         water_height=water_height,
         index=index,
@@ -134,18 +134,19 @@ def make_param_tuple(
     return params
 
 
-def find_pv(x: np.ndarray | pd.Series, distance: int):
+def find_pv(data: pd.Series, window: str):
 
-    peaks = find_peaks(x=x, distance=distance)[0]
-    valleys = find_peaks(x=x * -1, distance=distance)[0]
+    distance = pd.Timedelta(window) / pd.Timedelta(data.index.freq)
 
-    return (peaks, valleys)
+    peaks_iloc = find_peaks(x=data, distance=distance)[0]
+    valleys_iloc = find_peaks(x=data * -1, distance=distance)[0]
+
+    return (data.iloc[peaks_iloc], data.iloc[valleys_iloc])
 
 
-def regress_ts(ts: pd.Series, freq: str | pd.Timedelta, ref_date: pd.Timestamp):
-
-    if isinstance(freq, str):
-        freq = pd.Timedelta(freq)
+def regress_ts(ts: pd.Series, freq: str, ref_date: str | pd.Timestamp):
+    ref_date = pd.Timestamp(ref_date)
+    freq = pd.Timedelta(freq)
 
     x = ((ts.index - ref_date) / freq).values.reshape(-1, 1)
     y = ts.values.reshape(-1, 1)

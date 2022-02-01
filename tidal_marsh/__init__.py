@@ -2,6 +2,7 @@ from loguru import logger
 
 logger.disable(__name__)
 
+from . import tides, utils
 from .core import Model
 from .tides import Tides, load_tide
 
