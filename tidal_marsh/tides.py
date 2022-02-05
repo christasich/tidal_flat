@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 from utide.utilities import Bunch
 
 from . import constants
-from .utils import find_pv, lowess_ts, regress_ts
+from .utils import find_pv, lowess_ts, make_trend, regress_ts
 
 
 def load_tide(path: str) -> pd.Series:
@@ -24,7 +24,6 @@ def load_tide(path: str) -> pd.Series:
     vals = data.elevation.values
     index = pd.DatetimeIndex(data.datetime, freq='infer')
     tides = pd.Series(data=vals, index=index, name='elevation')
-    logger.info('tides')
     return tides
 
 
@@ -50,20 +49,19 @@ def model_tides(
 
     index = pd.date_range(start=start, end=end, freq=freq)
     t_predict = mdates.date2num(index.to_pydatetime())
-    tides = utide.reconstruct(t=t_predict, coef=coef, verbose=verbose)
+    predicted = utide.reconstruct(t=t_predict, coef=coef, verbose=verbose)
 
-    return tides
+    return pd.Series(data=predicted['h'], index=index)
 
 
 def flag_extrema(data: pd.Series, include_roll: bool = False) -> pd.DataFrame:
 
     data = data.to_frame(name='elevation')
-    data[['high', 'low', 'spring', 'neap']] = False
 
     # Find highs and lows
     highs, lows = find_pv(data=data.elevation, window="8H")
-    data.loc[highs.index, 'high'] = True
-    data.loc[lows.index, 'low'] = True
+    data['high'] = data.index.isin(highs.index)
+    data['low'] = data.index.isin(lows.index)
 
     # Find amplitude from rolling highs and lows
     high_roll = data.elevation.loc[data.high].rolling(window=2, center=True).mean()
@@ -74,8 +72,8 @@ def flag_extrema(data: pd.Series, include_roll: bool = False) -> pd.DataFrame:
 
     # Find springs and neaps
     springs, neaps = find_pv(data=roll.tidal_range, window="11D")
-    data.loc[springs.index, 'spring'] = True
-    data.loc[neaps.index, 'neap'] = True
+    data['spring'] = data.index.isin(springs.index)
+    data['neap'] = data.index.isin(neaps.index)
 
     if include_roll:
         return pd.concat([data, roll], axis=1)
@@ -109,50 +107,6 @@ def summarize_tides(data: pd.Series) -> pd.Series:
 
     return pd.Series(data=vals, index=index)
 
-    # smoothing_window = pd.Timedelta(smoothing_window)
-
-    # data['mw'] = (
-    #     lowess_ts(data=data.elevation.resample("12H25T").mean(), window=smoothing_window)
-    #     .reindex_like(data)
-    #     .interpolate(limit_direction='both')
-    # )
-
-    # data['mhw'] = (
-    #     lowess_ts(data=data.loc[data.high].elevation, window=smoothing_window)
-    #     .reindex_like(data)
-    #     .interpolate(limit_direction='both')
-    # )
-
-    # data['mlw'] = (
-    #     lowess_ts(data=data.loc[data.low].elevation, window=smoothing_window)
-    #     .reindex_like(data)
-    #     .interpolate(limit_direction='both')
-    # )
-
-    # data['mshw'] = (
-    #     lowess_ts(data=data.loc[data.spring].mhw, window=smoothing_window)
-    #     .reindex_like(data)
-    #     .interpolate(limit_direction='both')
-    # )
-    # data['mslw'] = (
-    #     lowess_ts(data=data.loc[data.spring].mlw, window=smoothing_window)
-    #     .reindex_like(data)
-    #     .interpolate(limit_direction='both')
-    # )
-
-    # data['mnhw'] = (
-    #     lowess_ts(data=data.loc[data.neap].mhw, window=smoothing_window)
-    #     .reindex_like(data)
-    #     .interpolate(limit_direction='both')
-    # )
-    # data['mnlw'] = (
-    #     lowess_ts(data=data.loc[data.neap].mlw, window=smoothing_window)
-    #     .reindex_like(data)
-    #     .interpolate(limit_direction='both')
-    # )
-
-    # return data
-
 
 @dataclass
 class Tides:
@@ -184,40 +138,49 @@ class Tides:
         neaps.columns = ['highs', 'lows']
         return neaps
 
-    def amplify(self, beta: float, benchmark: str = "MSL") -> pd.Series:
-        beta_high = self.calc_trend(beta)
-        beta_low = self.calc_trend(-beta)
-        if benchmark == "MSL":
-            above = ((self.data.elevation - self.summary.MSL) / (self.summary.MHW - self.summary.MSL) * beta_high).loc[
-                self.data.elevation > self.summary.MSL
-            ]
-            below = ((self.data.elevation - self.summary.MSL) / (self.summary.MLW - self.summary.MSL) * beta_low).loc[
-                self.data.elevation < self.summary.MSL
-            ]
-            return pd.concat([above, below]).sort_index()
+    def calc_amplification(
+        self,
+        beta: float | tuple[float, float] | pd.Series | tuple[pd.Series, pd.Series],
+        benchmarks: tuple[str, str],
+    ) -> pd.Series:
 
-    def calc_trend(self, rate_per_year: Number | pd.Series) -> pd.Series:
-        rate = rate_per_year / (pd.Timedelta('365.25D') / pd.Timedelta(self.data.index.freq))
-        if isinstance(rate, Number):
-            trend = pd.Series(data=rate, index=self.data.index).cumsum()
-        elif isinstance(rate, pd.Series):
-            trend = rate.reindex(self.data.index).interpolate().cumsum()
-        return trend
+        if isinstance(beta, float | pd.Series):
+            beta_high = make_trend(rate=beta, time_unit="365.25D", index=self.data.index)
+            beta_low = -beta_high
+        elif isinstance(beta, tuple | list):
+            beta_high = make_trend(rate=beta[0], time_unit="365.25D", index=self.data.index)
+            beta_low = make_trend(rate=beta[1], time_unit="365.25D", index=self.data.index)
 
-    def calc_elevation(self, beta: Number | pd.Series = 0.0, trend: Number | pd.Series = 0.0) -> pd.Series:
-        if beta != 0.0:
-            beta = self.calc_beta(beta)
-        if trend != 0.0:
-            trend = self.calc_trend(trend)
+        bench_high = self.summary[benchmarks[0]]
+        bench_low = self.summary[benchmarks[1]]
+
+        cond = self.data.elevation > self.summary.MSL
+
+        above = (self.data.elevation - self.summary.MSL) / (bench_high - self.summary.MSL) * beta_high
+        below = (self.data.elevation - self.summary.MSL) / (bench_low - self.summary.MSL) * beta_low
+
+        return below.mask(cond=cond, other=above)
+
+    def calc_trend(self, trend: float | pd.Series) -> pd.Series:
+        return make_trend(rate=trend, time_unit="365.25D", index=self.data.index)
+
+    def modify(
+        self,
+        beta: float | tuple[float, float] | pd.Series | tuple[pd.Series, pd.Series],
+        benchmarks: tuple[str, str],
+        trend: float | pd.Series,
+    ) -> pd.Series:
+        beta = self.calc_amplification(beta=beta, benchmarks=benchmarks)
+        trend = self.calc_trend(trend)
         return self.data.elevation + beta + trend
 
-    def plot(self, start: str = None, end: str = None, freq: str = None, show_change: bool = False) -> None:
+    def plot(self, start: str = None, end: str = None, freq: str = None) -> None:
         if freq is None:
             freq = self.data.index.freq
 
         subset = self.data.loc[start:end]
 
-        fig, ax = plt.subplots(figsize=(13, 5), constrained_layout=True)
+        _, ax = plt.subplots(figsize=(13, 5), constrained_layout=True)
 
         sns.lineplot(data=subset.elevation.resample(rule=freq).mean(), ax=ax, color='cornflowerblue', alpha=0.5)
         sns.scatterplot(

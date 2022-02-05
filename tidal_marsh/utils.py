@@ -2,6 +2,7 @@ import inspect
 import itertools as it
 import re
 from collections import namedtuple
+from numbers import Number
 from pathlib import Path
 
 import numpy as np
@@ -162,3 +163,16 @@ def lowess_ts(data: pd.Series, window: pd.Timedelta = None):
     frac = n / len(data)
     y = sm.nonparametric.lowess(endog=endog, exog=exog, frac=frac, is_sorted=True)[:, 1]
     return pd.Series(data=y, index=data.index)
+
+
+def make_trend(
+    rate: Number | pd.Series,
+    time_unit: str,
+    index: pd.DatetimeIndex,
+) -> pd.Series:
+    rate = rate / (pd.Timedelta(time_unit) / pd.Timedelta(index.freq))
+    if isinstance(rate, Number):
+        trend = pd.Series(data=rate, index=index).cumsum()
+    elif isinstance(rate, pd.Series):
+        trend = rate.reindex(index).interpolate().cumsum()
+    return trend

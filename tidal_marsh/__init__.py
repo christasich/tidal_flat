@@ -2,9 +2,9 @@ from loguru import logger
 
 logger.disable(__name__)
 
-from . import tides, utils
+from . import core, tides, utils
 from .core import Model
-from .tides import Tides, load_tide
+from .tides import Tides, load_tide, model_tides
 
 # from .constants import Inundation
 # from .constants import InundationResult
