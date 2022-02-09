@@ -17,7 +17,7 @@ from scipy.signal import find_peaks
 from sklearn.linear_model import LinearRegression
 from tqdm.notebook import tqdm
 
-from .constants import *
+from . import constants
 
 
 def make_combos(**kwargs):
@@ -176,3 +176,67 @@ def make_trend(
     elif isinstance(rate, pd.Series):
         trend = rate.reindex(index).interpolate().cumsum()
     return trend
+
+
+from typing import Callable, ParamSpec, TypeVar
+
+T = TypeVar('T')
+P = ParamSpec('P')
+
+
+def datetime2num(t: pd.Timestamp) -> float | np.ndarray:
+    try:
+        return t.timestamp()
+    except AttributeError:
+        pass
+    try:
+        return (t.astype(np.int64) / 10**9).values
+    except:
+        raise ValueError('t must be a pd.Timestamp or pd.DatetimeIndex.')
+
+
+def num2datetime(t: float | int) -> pd.Timestamp | pd.DatetimeIndex:
+    try:
+        return pd.to_datetime(t, unit='s')
+    except:
+        raise ValueError('t must be a number.')
+
+
+def datetime_wrapper(fun: Callable[P, T]) -> Callable[P, T]:
+    def wrapped(*args: P.args, **kwargs: P.kwargs) -> T:
+        args = [datetime2num(arg) if isinstance(arg, (pd.Timestamp, pd.DatetimeIndex)) else arg for arg in args]
+        kwargs = dict(
+            (key, datetime2num(value)) if isinstance(value, (pd.Timestamp, pd.DatetimeIndex)) else (key, value)
+            for key, value in kwargs.items()
+        )
+        return fun(*args, **kwargs)
+
+    return wrapped
+
+
+def stokes_settling(
+    grain_diameter: float,
+    grain_density: float,
+    fluid_density: float = constants.WATER_DENSITY,
+    fluid_viscosity: float = constants.WATER_VISCOSITY,
+    gravity: float = constants.GRAVITY,
+) -> float:
+    settling_rate = (2 / 9 * (grain_density - fluid_density) / fluid_viscosity) * gravity * (grain_diameter / 2) ** 2
+    return settling_rate
+
+
+def find_roots(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    roots = np.where(np.diff(np.signbit(a - b)))[0]
+    return roots
+
+
+def calculate_rate_vector(
+    t: pd.Timestamp | pd.DatetimeIndex, rate: float, ref_t: pd.Timedelta = None
+) -> float | np.ndarray:
+    if ref_t is None:
+        ref_t = t[0]
+    elapsed_seconds = (t - ref_t).total_seconds()
+    if isinstance(t, pd.DatetimeIndex):
+        return (rate * elapsed_seconds).values
+    else:
+        return rate * elapsed_seconds
