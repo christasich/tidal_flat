@@ -1,4 +1,3 @@
-import dataclasses
 from dataclasses import InitVar, dataclass, field
 from numbers import Number
 

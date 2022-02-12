@@ -1,21 +1,16 @@
-import inspect
 import itertools as it
 import re
-from collections import namedtuple
 from numbers import Number
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-import utide
-from joblib import Parallel, delayed
+import yaml
 from loguru import logger
-from matplotlib import dates as mdates
-from pyarrow import feather
 from scipy.signal import find_peaks
 from sklearn.linear_model import LinearRegression
-from tqdm.notebook import tqdm
+from sklearn.utils import Bunch
 
 from . import constants
 
@@ -28,9 +23,8 @@ def make_combos(**kwargs):
     for key, value in kwargs.items():
         if isinstance(value, (list, tuple, np.ndarray)) is False:
             kwargs.update({key: [value]})
-    keys, value_tuples = zip(*kwargs.items())
-    combo_tuple = namedtuple('combos', ['n', *list(keys)])
-    combos = [combo_tuple(n, *values) for n, values in enumerate(it.product(*value_tuples))]
+    keys, values = zip(*kwargs.items())
+    combos = [Bunch(n=i, **dict(zip(keys, combo))) for i, combo in enumerate(it.product(*values))]
     return combos
 
 
@@ -64,75 +58,6 @@ def search_file(wdir, filename):
     elif len(list(Path(wdir).glob(filename))) > 1:
         raise Exception('Found too many files that match.')
     return found
-
-
-def missing_combos(wdir, fn_format, combos):
-    '''
-    Function that creates filenames for a list of combinations and
-    then searches a directory for the filenames. The function returns
-    a list of combinations that were not found.
-    '''
-    to_make = []
-    for combo in combos:
-        fn = construct_filename(
-            fn_format=fn_format,
-            run_len=combo.run_len,
-            dt=int(pd.to_timedelta(combo.dt).total_seconds()),
-            slr=combo.slr,
-        )
-        if search_file(wdir, fn) == 0:
-            to_make.append(combo)
-    return to_make
-
-
-def make_tides(coef: utide._solve.Bunch, start: int, stop: int, freq: str, n_jobs=1, pbar=False):
-
-    years = np.arange(start, stop, 1)
-    if pbar == True:
-        years = tqdm(years)
-
-    def one_year(year, coef, freq):
-        start = str(year)
-        end = str(year + 1)
-        index = pd.date_range(start=start, end=end, closed='left', freq=freq, name='datetime')
-        time = mdates.date2num((index - pd.Timedelta('6 hours')).to_pydatetime())
-        elev = utide.reconstruct(t=time, coef=coef, verbose=False).h
-
-        return pd.Series(data=elev, index=index)
-
-    tides = Parallel(n_jobs=n_jobs)(delayed(one_year)(year=year, coef=coef, freq=freq) for year in years)
-
-    return pd.concat(tides)
-
-
-def make_param_tuple(
-    water_height,
-    index,
-    bound_conc,
-    settle_rate,
-    bulk_den,
-    start_elev=0,
-    tidal_amplifier=1,
-    conc_method='CT',
-    organic_rate=0,
-    compaction_rate=0,
-    subsidence_rate=0,
-):
-    param_tuple = namedtuple('param_tuple', inspect.getfullargspec(make_param_tuple).args)
-    params = param_tuple(
-        water_height=water_height,
-        index=index,
-        bound_conc=bound_conc,
-        settle_rate=settle_rate,
-        bulk_den=bulk_den,
-        start_elev=start_elev,
-        tidal_amplifier=tidal_amplifier,
-        conc_method=conc_method,
-        organic_rate=organic_rate,
-        compaction_rate=compaction_rate,
-        subsidence_rate=subsidence_rate,
-    )
-    return params
 
 
 def find_pv(data: pd.Series, window: str):
@@ -240,3 +165,9 @@ def calculate_rate_vector(
         return (rate * elapsed_seconds).values
     else:
         return rate * elapsed_seconds
+
+
+def load_config(config):
+    with open(config) as file:
+        config = yaml.safe_load(file)
+    return config
