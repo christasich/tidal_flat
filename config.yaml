@@ -1,24 +1,31 @@
+wdir: ./models/results/02
+
 logging:
   enabled: True
   handlers:
     stderr:
-      enabled: True
+      enabled: False
       config:
-        level: DEBUG
+        level: INFO
         colorize: True
         backtrace: True
+        diagnose: True
+        format: "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <red>{process}</red> | <light-blue>{extra[run]}</light-blue> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
     file:
       enabled: True
       config:
         sink: debug.log
-        level: DEBUG
+        level: INFO
         mode: w
+        backtrace: True
+        diagnose: True
+        # serialize: True
+        format: "{time:YYYY-MM-DD HH:mm:ss} | {process} | {extra[run]} | {level: <8} | {name}:{function}:{line} - {message}"
 
 tides:
   rebuild: False
   feather_file: ./data/processed/tides.feather
-  object_file: ./data/processed/tides.obj
-
+  cache_dir: ./data/tmp/
 
 parameters:
   elevation_start: [1.5, 2.6]
@@ -36,7 +43,5 @@ parameters:
   beta: [0.0, 7.5e-3, 15.0e-3]
 
 parallel:
-  enabled: True
-  config:
-    n_jobs: 2
-    backend: multiprocessing
+  n_jobs: 10
+  # backend: multiprocessing

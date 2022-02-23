@@ -1,5 +1,4 @@
 from dataclasses import InitVar, dataclass, field
-from numbers import Number
 
 import numpy as np
 import pandas as pd
@@ -14,7 +13,7 @@ from . import constants
 from .utils import find_pv, lowess_ts, make_trend, regress_ts
 
 
-def load_tide(path: str) -> pd.Series:
+def load_tides(path: str) -> pd.Series:
     '''
     Function that loads the tidal curve constructed by make_tides.R
     and sets the index to the Datetime column and infers frequency.

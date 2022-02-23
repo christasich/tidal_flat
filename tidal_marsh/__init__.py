@@ -1,35 +1,24 @@
 from loguru import logger
 
+from . import constants, core, tides, utils
+from .constants import *
+from .core import *
+from .parallel import *
+from .tides import *
+from .utils import *
+
+# from .core import Model
+
+
 logger.disable(__name__)
 
-from . import constants, core, tides, utils
-from .core import Model
-from .tides import Tides, load_tide, model_tides
-
-# from .constants import Inundation
-# from .constants import InundationResult
-# from .core import *
-# from .tides import *
-# from .utils import *
-
-# import logging
-
-
-# class InterceptHandler(logging.Handler):
-#     def emit(self, record):
-#         # Get corresponding Loguru level if it exists
-#         try:
-#             level = logger.level(record.levelname).name
-#         except ValueError:
-#             level = record.levelno
-
-#         # Find caller from where originated the logged message
-#         frame, depth = logging.currentframe(), 2
-#         while frame.f_code.co_filename == logging.__file__:
-#             frame = frame.f_back
-#             depth += 1
-
-#         logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
-
-
-# logging.basicConfig(handlers=[InterceptHandler()], level=0)
+# __all__ = [
+#     "constants",
+#     "core",
+#     "tidal",
+#     "utils",
+#     "Model",
+#     "Tides",
+#     "load_tides",
+#     "model_tides",
+# ]

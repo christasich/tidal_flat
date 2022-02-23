@@ -16,47 +16,47 @@ from . import constants
 
 
 def make_combos(**kwargs):
-    '''
+    """
     Function that takes n-kwargs and returns a list of namedtuples
     for each possible combination of kwargs.
-    '''
+    """
     for key, value in kwargs.items():
         if isinstance(value, (list, tuple, np.ndarray)) is False:
             kwargs.update({key: [value]})
     keys, values = zip(*kwargs.items())
-    combos = [Bunch(n=i, **dict(zip(keys, combo))) for i, combo in enumerate(it.product(*values))]
+    combos = [Bunch(id=i, **dict(zip(keys, combo))) for i, combo in enumerate(it.product(*values))]
     return combos
 
 
 def construct_filename(fn_format, **kwargs):
-    '''
+    """
     Function that takes a string with n-number of format placeholders (e.g. {0]})
     and uses the values from n-kwargs to populate the string.
-    '''
+    """
     kwarg_num = len(kwargs)
-    fn_var_num = len(re.findall(r'\{.*?\}', fn_format))
+    fn_var_num = len(re.findall(r"\{.*?\}", fn_format))
     if kwarg_num != fn_var_num:
         raise Exception(
-            'Format error: Given {} kwargs, but '
-            'filename format has {} sets of '
-            'braces.'.format(kwarg_num, fn_var_num)
+            "Format error: Given {} kwargs, but "
+            "filename format has {} sets of "
+            "braces.".format(kwarg_num, fn_var_num)
         )
     fn = fn_format.format(*kwargs.values())
     return fn
 
 
 def search_file(wdir, filename):
-    '''
+    """
     Function that searches a directory for a filename and returns the number
     of exact matches (0 or 1). If more than one file is found, the function
     will raise an exception.
-    '''
+    """
     if len(list(Path(wdir).glob(filename))) == 0:
         found = 0
     elif len(list(Path(wdir).glob(filename))) == 1:
         found = 1
     elif len(list(Path(wdir).glob(filename))) > 1:
-        raise Exception('Found too many files that match.')
+        raise Exception("Found too many files that match.")
     return found
 
 
@@ -105,8 +105,8 @@ def make_trend(
 
 from typing import Callable, ParamSpec, TypeVar
 
-T = TypeVar('T')
-P = ParamSpec('P')
+T = TypeVar("T")
+P = ParamSpec("P")
 
 
 def datetime2num(t: pd.Timestamp) -> float | np.ndarray:
@@ -117,14 +117,14 @@ def datetime2num(t: pd.Timestamp) -> float | np.ndarray:
     try:
         return (t.astype(np.int64) / 10**9).values
     except:
-        raise ValueError('t must be a pd.Timestamp or pd.DatetimeIndex.')
+        raise ValueError("t must be a pd.Timestamp or pd.DatetimeIndex.")
 
 
 def num2datetime(t: float | int) -> pd.Timestamp | pd.DatetimeIndex:
     try:
-        return pd.to_datetime(t, unit='s')
+        return pd.to_datetime(t, unit="s")
     except:
-        raise ValueError('t must be a number.')
+        raise ValueError("t must be a number.")
 
 
 def datetime_wrapper(fun: Callable[P, T]) -> Callable[P, T]:
@@ -153,18 +153,6 @@ def stokes_settling(
 def find_roots(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     roots = np.where(np.diff(np.signbit(a - b)))[0]
     return roots
-
-
-def calculate_rate_vector(
-    t: pd.Timestamp | pd.DatetimeIndex, rate: float, ref_t: pd.Timedelta = None
-) -> float | np.ndarray:
-    if ref_t is None:
-        ref_t = t[0]
-    elapsed_seconds = (t - ref_t).total_seconds()
-    if isinstance(t, pd.DatetimeIndex):
-        return (rate * elapsed_seconds).values
-    else:
-        return rate * elapsed_seconds
 
 
 def load_config(config):

@@ -6,5 +6,8 @@
     "python.linting.flake8Enabled": true,
     "python.linting.enabled": true,
     "jupyter.notebookFileRoot": "${workspaceFolder}",
-    "python.linting.mypyEnabled": true
+    "python.linting.mypyEnabled": true,
+    "code-runner.executorMap": {
+        "python": "$pythonPath -u $fullFileName"
+    }
 }
