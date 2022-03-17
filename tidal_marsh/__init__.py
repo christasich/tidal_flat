@@ -1,14 +1,17 @@
 from loguru import logger
 
-from . import constants, core, tides, utils
+from . import constants
+from . import core
+from . import simulations
+from . import tides
+from . import utils
 from .constants import *
 from .core import *
-from .parallel import *
+from .simulations import *
 from .tides import *
 from .utils import *
 
 # from .core import Model
-
 
 logger.disable(__name__)
 

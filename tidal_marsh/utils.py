@@ -11,8 +11,20 @@ from loguru import logger
 from scipy.signal import find_peaks
 from sklearn.linear_model import LinearRegression
 from sklearn.utils import Bunch
+import json
+from types import SimpleNamespace
+import random
+from typing import Callable, ParamSpec, TypeVar
+
+T = TypeVar("T")
+P = ParamSpec("P")
 
 from . import constants
+
+
+def dotdict(dict):
+    dump = json.dumps(dict)
+    return json.loads(dump, object_hook=lambda x: Bunch(**x))
 
 
 def make_combos(**kwargs):
@@ -24,7 +36,9 @@ def make_combos(**kwargs):
         if isinstance(value, (list, tuple, np.ndarray)) is False:
             kwargs.update({key: [value]})
     keys, values = zip(*kwargs.items())
-    combos = [Bunch(id=i, **dict(zip(keys, combo))) for i, combo in enumerate(it.product(*values))]
+    combos = [i for i in it.product(*values)]
+    # combos = [Bunch(id=i, **dict(zip(keys, combo))) for i, combo in enumerate(combos)]
+    combos = [Bunch(**dict(zip(keys, combo))) for combo in combos]
     return combos
 
 
@@ -37,9 +51,7 @@ def construct_filename(fn_format, **kwargs):
     fn_var_num = len(re.findall(r"\{.*?\}", fn_format))
     if kwarg_num != fn_var_num:
         raise Exception(
-            "Format error: Given {} kwargs, but "
-            "filename format has {} sets of "
-            "braces.".format(kwarg_num, fn_var_num)
+            "Format error: Given {} kwargs, but filename format has {} sets of braces.".format(kwarg_num, fn_var_num)
         )
     fn = fn_format.format(*kwargs.values())
     return fn
@@ -90,6 +102,14 @@ def lowess_ts(data: pd.Series, window: pd.Timedelta = None):
     return pd.Series(data=y, index=data.index)
 
 
+def quadratic(t, a=0, b=0, c=0):
+    return a * t ** 2 + b * t + c
+
+
+def exponential(t, a, k):
+    return a * np.exp(t / k)
+
+
 def make_trend(
     rate: Number | pd.Series,
     time_unit: str,
@@ -103,19 +123,13 @@ def make_trend(
     return trend
 
 
-from typing import Callable, ParamSpec, TypeVar
-
-T = TypeVar("T")
-P = ParamSpec("P")
-
-
 def datetime2num(t: pd.Timestamp) -> float | np.ndarray:
     try:
         return t.timestamp()
     except AttributeError:
         pass
     try:
-        return (t.astype(np.int64) / 10**9).values
+        return (t.astype(np.int64) / 10 ** 9).values
     except:
         raise ValueError("t must be a pd.Timestamp or pd.DatetimeIndex.")
 
@@ -152,10 +166,12 @@ def stokes_settling(
 
 def find_roots(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     roots = np.where(np.diff(np.signbit(a - b)))[0]
+    logger.trace(f"{len(roots)} root(s) found.")
     return roots
 
 
 def load_config(config):
     with open(config) as file:
         config = yaml.safe_load(file)
+        config = dotdict(config)
     return config

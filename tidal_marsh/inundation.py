@@ -8,7 +8,6 @@ from scipy.integrate import solve_ivp
 from scipy.integrate._ivp.ivp import OdeResult
 from scipy.interpolate import InterpolatedUnivariateSpline
 from sklearn.utils import Bunch
-
 from . import utils
 
 
@@ -24,21 +23,29 @@ class Inundation:
     bulk_density: InitVar[float]
     settling_rate: InitVar[float]
     constant_rates: InitVar[float]
-    result: None | InundationResult = field(default=None, init=False)
-    data: pd.DataFrame = field(default=None, init=False)
-    aggradation_total: float = field(default=None, init=False)
-    degradation_total: float = field(default=None, init=False)
+    result: InundationResult = field(init=False)
+    data: pd.DataFrame = field(init=False)
+    aggradation_total: float = 0.0
+    degradation_total: float = 0.0
 
     def __post_init__(self, ssc_boundary, bulk_density, settling_rate, constant_rates):
         self.start = self.water_levels.index[0]
         self.end = self.water_levels.index[-1]
+        self.logger = logger.bind(model_time=self.start)
         self.timestep = self.water_levels.index[1] - self.water_levels.index[0]
         self.period = self.end - self.start
         self.slack = self.water_levels.idxmax()
         self.slack_elevation = self.water_levels.max()
-        tides_func = InterpolatedUnivariateSpline(
-            x=utils.datetime2num(self.water_levels.index), y=self.water_levels.values, k=3
-        )
+        if self.water_levels.shape[0] <= 3:
+            self.logger.debug(
+                "Inundation is less than three data points. Spline interpolation requires k=3. Upsampling."
+            )
+            data = self.water_levels.asfreq(self.water_levels.index.freq / 2).interpolate()
+            tides_func = InterpolatedUnivariateSpline(x=utils.datetime2num(data.index), y=data.values, k=3)
+        else:
+            tides_func = InterpolatedUnivariateSpline(
+                x=utils.datetime2num(self.water_levels.index), y=self.water_levels.values, k=3
+            )
         self.params = Bunch(
             tides_func=tides_func,
             ssc_boundary=ssc_boundary,
@@ -47,15 +54,10 @@ class Inundation:
             constant_rates=constant_rates,
         )
         self.overextraction = 0.0
-
-    def calculate_elevation(self, at=None, to=None):
-        if at:
-            elapsed_seconds = (at - self.now).total_seconds()
-            return self.constant_rates * elapsed_seconds + self.elevation
-        elif to:
-            index = self.water_levels.loc[self.now : to].index
-            elapsed_seconds = (index - self.now).total_seconds()
-            return (self.constant_rates * elapsed_seconds).values + self.elevation
+        try:
+            self.integrate()
+        except Exception as e:
+            self.logger.error(e)
 
     @staticmethod
     def solve_odes(t, y, params):
@@ -116,23 +118,10 @@ class Inundation:
             atol=(1e-6, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8),
             args=[self.params],
         )
+        self.set()
 
+    def set(self):
         self.aggradation_total = self.result.y[3][-1]
-        self._set_df()
-        self._validate_result()
-
-    def _validate_result(self):
-        if self.result.success is False:
-            logger.warning(f"{self.start} | Integration failed!\nparams={self.params}")
-        if (self.data.aggradation < 0.0).any():
-            logger.warning(f"{self.start} | Negative aggradation detected!\n{self.data.loc[self.data.aggradation < 0]}")
-        if (self.data.aggradation_max < self.data.aggradation).any():
-            logger.warning(
-                f"{self.start} | Overextraction detected. Extracted {self.data.aggradation.values[-1] / self.data.aggradation_max.values[-1] * 100:.2f}% of possible."
-            )
-            self.overextraction = self.data.aggradation.values[-1] - self.data.aggradation_max.values[-1]
-
-    def _set_df(self):
         index = utils.num2datetime(self.result.t)
         water_level = self.result.y[0]
         concentration = self.result.y[1]

@@ -1,47 +1,64 @@
-wdir: ./models/results/02
+parallel:
+  enabled: True
+  max_cores: 70
+  pool:
+    maxtasksperchild: 1
+
+wdir: ./models/results/01
 
 logging:
   enabled: True
   handlers:
-    stderr:
+    - type: stderr
       enabled: False
       config:
-        level: INFO
+        level: TRACE
+        format: >-
+          <green>{time:YYYY-MM-DD HH:mm:ss}</green> |
+          <magenta>{process}</magenta> |
+          <level>{level: <8}</level> |
+          <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> |
+          <light-blue>{extra[id]}</light-blue> |
+          <level>{message}</level>
         colorize: True
-        backtrace: True
+        backtrace: False
         diagnose: True
-        format: "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <red>{process}</red> | <light-blue>{extra[run]}</light-blue> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
-    file:
+    - type: file
       enabled: True
       config:
-        sink: debug.log
         level: INFO
+        format: >-
+          {time:YYYY-MM-DD HH:mm:ss} |
+          {process} |
+          {level: <8} |
+          {name}:{function}:{line} |
+          {extra[id]} |
+          {message}
         mode: w
-        backtrace: True
+        backtrace: False
         diagnose: True
-        # serialize: True
-        format: "{time:YYYY-MM-DD HH:mm:ss} | {process} | {extra[run]} | {level: <8} | {name}:{function}:{line} - {message}"
+        serialize: False
 
 tides:
   rebuild: False
-  feather_file: ./data/processed/tides.feather
-  cache_dir: ./data/tmp/
+  feather_path: ./data/processed/tides.feather
+  cache_path: ./data/tmp/
+  parameters:
+    z2100: [0.3, 0.7, 1.1]
+    b: 0.003
+    beta: [0.015, 0.075, 0.0]
+    k: [-10, -30, -50]
 
-parameters:
-  elevation_start: [1.5, 2.6]
-  ssc:
-    month: [6, 9]
-    value: [0.1, 0.4]
-  ssc_factor: [0.5, 1, 1.5]
-  grain_diameter: [1.5e-5, 2.5e-5, 3.5e-5]
-  grain_density: 2.65e+3
-  bulk_density: [800, 1000, 1200]
-  organic_rate: 2.0e-4
-  compaction_rate: -4.0e-3
-  subsidence_rate: -3.0e-3
-  slr_rate: [0.0, 5.0e-3, 10.0e-3]
-  beta: [0.0, 7.5e-3, 15.0e-3]
-
-parallel:
-  n_jobs: 10
-  # backend: multiprocessing
+platform:
+  parameters:
+    initial_elevation: [1.5, 2.6]
+    ssc:
+      month: [6, 9]
+      value: [0.1, 0.4]
+    ssc_factor: [0.5, 1, 1.5]
+    grain_diameter: [1.5e-5, 2.5e-5, 3.5e-5]
+    grain_density: 2.65e+3
+    bulk_density: [800, 1000, 1200]
+    organic_rate: 2.0e-4
+    compaction_rate: -4.0e-3
+    subsidence_rate: -3.0e-3
