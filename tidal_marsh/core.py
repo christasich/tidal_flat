@@ -196,7 +196,6 @@ class Model:
         if self.now == self.end:
             self.results = pd.DataFrame.from_records(data=self.results, index="index").squeeze()
             self.pbar.close()
-            self.logger.info(f"{self.now} | Simulation complete. Exiting.")
 
     def plot_results(self, freq="10T") -> None:
 

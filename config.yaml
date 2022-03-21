@@ -4,7 +4,8 @@ parallel:
   pool:
     maxtasksperchild: 1
 
-wdir: ./models/results/01
+wdir: ./models/02
+cache_path: .cache/
 
 logging:
   enabled: True
@@ -15,6 +16,7 @@ logging:
         level: TRACE
         format: >-
           <green>{time:YYYY-MM-DD HH:mm:ss}</green> |
+          <red>{elapsed}{/red} |
           <magenta>{process}</magenta> |
           <level>{level: <8}</level> |
           <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> |
@@ -29,6 +31,7 @@ logging:
         level: INFO
         format: >-
           {time:YYYY-MM-DD HH:mm:ss} |
+          {elapsed} |
           {process} |
           {level: <8} |
           {name}:{function}:{line} |
@@ -41,12 +44,11 @@ logging:
 
 tides:
   rebuild: False
-  feather_path: ./data/processed/tides.feather
-  cache_path: ./data/tmp/
+  path: ./data/processed/tides_2020-2120.feather
   parameters:
     z2100: [0.3, 0.7, 1.1]
     b: 0.003
-    beta: [0.015, 0.075, 0.0]
+    beta: [0.015, 0.0075, 0.0]
     k: [-10, -30, -50]
 
 platform:

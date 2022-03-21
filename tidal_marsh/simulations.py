@@ -26,37 +26,47 @@ from . import utils
 from .core import Model
 from .tides import Tides
 
+@logger.catch
+def simulate(
+    initial_elevation,
+    ssc,
+    grain_diameter,
+    grain_density,
+    bulk_density,
+    organic_rate,
+    compaction_rate,
+    subsidence_rate,
+    wdir,
+    id=0,
+):
+    _logger = logger.bind(id=f"{id:04}")
 
-def simulate(params):
+    water_levels = pd.read_pickle(wdir / "tides.pickle")
 
-    _logger = logger.bind(id=f"{params.id:04}")
-
-    _logger.info("Initializing sediment model.")
+    _logger.info("Initializing")
     model = Model(
-        water_levels=params.water_levels,
-        initial_elevation=params.initial_elevation,
-        ssc=params.ssc,
-        grain_diameter=params.grain_diameter,
-        grain_density=params.grain_density,
-        bulk_density=params.bulk_density,
-        organic_rate=params.organic_rate,
-        compaction_rate=params.compaction_rate,
-        subsidence_rate=params.subsidence_rate,
-        id=params.id,
+        water_levels=water_levels,
+        initial_elevation=initial_elevation,
+        ssc=ssc,
+        grain_diameter=grain_diameter,
+        grain_density=grain_density,
+        bulk_density=bulk_density,
+        organic_rate=organic_rate,
+        compaction_rate=compaction_rate,
+        subsidence_rate=subsidence_rate,
+        id=id,
     )
     try:
-        _logger.info("Starting simulation.")
         model.run()
 
-        result_path = params.wdir / "results" / f"{params.id:04}.csv"
+        result_path = wdir / "results" / f"{id:04}.csv"
         model.results.to_csv(result_path)
-        logger.info(f"Model completed successfully. Saved results to {result_path}")
-        with open(params.wdir / "overextraction.csv", "a") as file:
+        _logger.info(f"Model completed successfully. Saved results to {result_path}")
+        with open(wdir / "overextraction.csv", "a") as file:
             writer = csv.writer(file)
-            writer.writerow([f"{params.id:04}", model.overextraction])
+            writer.writerow([f"{id:04}", model.overextraction])
     except:
         _logger.exception("Issue running model.")
-
 
 @dataclass
 class Simulations:
@@ -69,18 +79,22 @@ class Simulations:
     platform_params: Bunch = field(init=False)
     n: int = field(init=False)
     metadata: pd.DataFrame = field(init=False)
+    cache_path: Path = field(init=False)
+    tide_path: Path = field(init=False)
     pbar: tqdm = field(init=False, repr=False)
     results: list = field(init=False, default_factory=list)
 
     def __post_init__(self, config_path):
         # Load configuration
         self.config = utils.load_config(config_path)
+        self.cache_path = Path(self.config.cache_path)
 
         # Setup working directory
         self.wdir = Path(self.config.wdir)
         if self.wdir.exists():
             shutil.rmtree(self.wdir)
         self.wdir.mkdir()
+        (self.wdir / "results").mkdir()
 
         if self.config.logging.enabled:
             self.configure_logger()
@@ -106,12 +120,11 @@ class Simulations:
                 self.logger.add(**handler.config)
 
     def load_tides(self):
-        feather_path = Path(self.config.tides.feather_path)
-        cache_path = Path(self.config.tides.cache_path)
-        pickle_path = Path(cache_path / (feather_path.stem + ".obj"))
+        self.tide_path = Path(self.config.tides.feather_path)
+        pickle_path = Path(self.cache_path / (self.tide_path.stem + ".obj"))
         if self.config.tides.rebuild or not pickle_path.exists():
-            self.logger.info(f"Loading tides from feather file at {feather_path}")
-            data = tides.load_tides(feather_path.as_posix())
+            self.logger.info(f"Loading tides from feather file at {self.tide_path}")
+            data = tides.load_tides(self.tide_path.as_posix())
 
             self.logger.info("Building Tides object")
             self.tide = tides.Tides(water_levels=data)
@@ -144,26 +157,23 @@ class Simulations:
         self.metadata.index.name = "id"
         self.metadata.to_csv(self.wdir / "metadata.csv")
 
-    def prep_tides(self, z2100, b, beta, k):
-        self.logger.info(f"Preparing tides with parameters: z2100={z2100}, b={b}, beta={beta}, k={k}.")
+    def adjust_tides(self, z2100, b, beta, k):
+        self.logger.info(f"Adjust tides with parameters: z2100={z2100}, b={b}, beta={beta}, k={k}.")
         water_levels = (
             self.tide.data.elevation
             + self.tide.calc_slr(z2100=z2100, b=b)
             + self.tide.calc_amplification(beta=beta, k=k)
         )
-        return water_levels
+        water_levels.to_pickle(self.cache_path / "tides.pickle")
 
     def single(self):
         id = 0
         for t in self.tide_params:
-            water_levels = self.prep_tides(**t)
+            self.adjust_tides(**t)
             for p in self.platform_params:
                 params = Bunch(**{k: v for k, v in p.items() if "ssc" not in k})
                 params.ssc = p["ssc"] * p["ssc_factor"]
-                params.water_levels = water_levels
-                params.id = id
-                params.wdir = self.wdir
-                result = simulate(params)
+                result = simulate(id=id, wdir=self.wdir, **params)
                 self.results.append(result)
                 id += 1
         self.pbar.close()
@@ -171,13 +181,14 @@ class Simulations:
 
     def multiple(self):
         def init():
-            sys.stdout.write(" ")
-            sys.stdout.flush()
+            tqdm.write(s=" ", end="")
 
         def callback(*a):
             self.pbar.update()
 
-        max_cores = psutil.virtual_memory().total / (self.tide.data.memory_usage().sum() * 1.25)
+        used_mem = psutil.Process(os.getpid()).memory_info().rss
+        available_mem = psutil.virtual_memory().available
+        max_cores = available_mem / (used_mem * 1.2)
         self.config.parallel.pool.processes = int(min(self.config.parallel.max_cores, max_cores))
         self.logger.info(f"Initializing multiprocessing with a pool of {self.config.parallel.pool.processes} workers.")
         pool = mp.Pool(initializer=init, **self.config.parallel.pool)
@@ -185,24 +196,25 @@ class Simulations:
         id = 0
         count = 1
         for t in self.tide_params:
-            batch_results = []
-            water_levels = self.prep_tides(**t)
-            self.logger.info(f"Starting batch #{count}/{len(self.tide_params)}.")
+            self.adjust_tides(**t)
+            self.logger.info(
+                f"Starting batch #{count} of {len(self.tide_params)} containing runs"
+                f" {id:04} through {id+len(self.platform_params):04}."
+            )
             for p in self.platform_params:
                 params = Bunch(**{k: v for k, v in p.items() if "ssc" not in k})
                 params.ssc = p["ssc"] * p["ssc_factor"]
-                params.water_levels = water_levels
-                params.id = id
-                params.wdir = self.wdir
-                result = pool.apply_async(func=simulate, args=(params,), callback=callback)
-                batch_results.append(result)
-                self.results.append(result)
-                self.logger.debug(f"RUN #{id:04} sent to worker.")
+                self.results.append(
+                    pool.apply_async(
+                        func=simulate,
+                        kwds={"id": id, "wdir": self.wdir, **params},
+                        callback=callback,
+                    )
+                )
                 id += 1
-            self.logger.info(f"Batch #{count} sent to workers. Waiting for results.")
-            [r.wait() for r in batch_results]
-            self.logger.info(f"Batch #{count} complete.")
-            count += 1
+                time.sleep(0.1)
+                # self.logger.info(f"Batch #{count} sent.")
+                count += 1
         pool.close()
         pool.join()
         self.pbar.close()
