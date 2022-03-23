@@ -30,6 +30,7 @@ ipykernel = "^6.7.0"
 mypy = "^0.931"
 ipympl = "^0.8.7"
 jupyter-dash = "^0.4.0"
+memory-profiler = "^0.60.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

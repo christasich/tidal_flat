@@ -22,11 +22,6 @@ P = ParamSpec("P")
 from . import constants
 
 
-def dotdict(dict):
-    dump = json.dumps(dict)
-    return json.loads(dump, object_hook=lambda x: Bunch(**x))
-
-
 def make_combos(**kwargs):
     """
     Function that takes n-kwargs and returns a list of namedtuples
@@ -168,10 +163,3 @@ def find_roots(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     roots = np.where(np.diff(np.signbit(a - b)))[0]
     logger.trace(f"{len(roots)} root(s) found.")
     return roots
-
-
-def load_config(config):
-    with open(config) as file:
-        config = yaml.safe_load(file)
-        config = dotdict(config)
-    return config

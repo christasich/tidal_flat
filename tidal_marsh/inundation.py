@@ -36,16 +36,15 @@ class Inundation:
         self.period = self.end - self.start
         self.slack = self.water_levels.idxmax()
         self.slack_elevation = self.water_levels.max()
-        if self.water_levels.shape[0] <= 3:
+        while self.water_levels.shape[0] <= 3:
+            freq = self.water_levels.index.freq / 2
             self.logger.debug(
-                "Inundation is less than three data points. Spline interpolation requires k=3. Upsampling."
+                f"Inundation is < 3 data points. Spline interpolation requires k=3. Upsampling to {freq}."
             )
-            data = self.water_levels.asfreq(self.water_levels.index.freq / 2).interpolate()
-            tides_func = InterpolatedUnivariateSpline(x=utils.datetime2num(data.index), y=data.values, k=3)
-        else:
-            tides_func = InterpolatedUnivariateSpline(
-                x=utils.datetime2num(self.water_levels.index), y=self.water_levels.values, k=3
-            )
+            self.water_levels = self.water_levels.asfreq(freq=freq).interpolate()
+        tides_func = InterpolatedUnivariateSpline(
+            x=utils.datetime2num(self.water_levels.index), y=self.water_levels.values, k=3
+        )
         self.params = Bunch(
             tides_func=tides_func,
             ssc_boundary=ssc_boundary,

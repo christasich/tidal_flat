@@ -14,20 +14,42 @@ from dataclasses import InitVar, dataclass, field
 import numpy as np
 import pandas as pd
 import psutil
-from joblib import Parallel, delayed, dump, load
 from loguru import _Logger, logger
 from tqdm.auto import tqdm
-from types import SimpleNamespace
 import os
 import itertools as it
+import yaml
+import json
 
 from . import tides
 from . import utils
 from .core import Model
-from .tides import Tides
+from .tides import Tides, load_tides
 
-@logger.catch
+
+def init():
+    tqdm.write(s=" ", end="")
+
+
+def cache_tide(cache_dir, z2100, b, beta, k):
+    try:
+        filename = f"tides.z2100_{z2100}.b_{b}.beta_{beta}.k_{k}.pickle"
+        path = cache_dir / filename
+        if path.exists():
+            msg = f"Skipping. {filename} already in cache."
+            return {"path": path, "msg": msg}
+        with open(cache_dir / "base.pickle", "rb") as file:
+            base = pickle.load(file)
+        water_levels = base.data.elevation + base.calc_slr(z2100=z2100, b=b) + base.calc_amplification(beta=beta, k=k)
+        water_levels.to_frame(name="elvevation").squeeze().to_pickle(path)
+        msg = f"Complete. {filename} cached successfully."
+        return {"path": path, "msg": msg}
+    except Exception as e:
+        raise e
+
+
 def simulate(
+    tide,
     initial_elevation,
     ssc,
     grain_diameter,
@@ -39,117 +61,156 @@ def simulate(
     wdir,
     id=0,
 ):
-    _logger = logger.bind(id=f"{id:04}")
 
-    water_levels = pd.read_pickle(wdir / "tides.pickle")
-
-    _logger.info("Initializing")
-    model = Model(
-        water_levels=water_levels,
-        initial_elevation=initial_elevation,
-        ssc=ssc,
-        grain_diameter=grain_diameter,
-        grain_density=grain_density,
-        bulk_density=bulk_density,
-        organic_rate=organic_rate,
-        compaction_rate=compaction_rate,
-        subsidence_rate=subsidence_rate,
-        id=id,
-    )
     try:
+        model = Model(
+            water_levels=pd.read_pickle(tide),
+            initial_elevation=initial_elevation,
+            ssc=ssc,
+            grain_diameter=grain_diameter,
+            grain_density=grain_density,
+            bulk_density=bulk_density,
+            organic_rate=organic_rate,
+            compaction_rate=compaction_rate,
+            subsidence_rate=subsidence_rate,
+            id=id,
+        )
         model.run()
 
         result_path = wdir / "results" / f"{id:04}.csv"
         model.results.to_csv(result_path)
-        _logger.info(f"Model completed successfully. Saved results to {result_path}")
         with open(wdir / "overextraction.csv", "a") as file:
             writer = csv.writer(file)
             writer.writerow([f"{id:04}", model.overextraction])
-    except:
-        _logger.exception("Issue running model.")
+        return f"Model completed successfully. Saved results to {result_path}"
+    except Exception as e:
+        raise e
+
 
 @dataclass
 class Simulations:
     config_path: InitVar[str]
     config: Bunch = field(init=False)
     wdir: Path = field(init=False)
+    cache_dir: Path = field(init=False)
+    base_path: Path = field(init=False)
+    cached_tides: list = field(init=False, default_factory=list)
     logger: _Logger = field(init=False)
-    tide: Tides = field(init=False)
+    n_cores: int = 1
     tide_params: Bunch = field(init=False)
     platform_params: Bunch = field(init=False)
     n: int = field(init=False)
     metadata: pd.DataFrame = field(init=False)
-    cache_path: Path = field(init=False)
-    tide_path: Path = field(init=False)
     pbar: tqdm = field(init=False, repr=False)
     results: list = field(init=False, default_factory=list)
 
     def __post_init__(self, config_path):
-        # Load configuration
-        self.config = utils.load_config(config_path)
-        self.cache_path = Path(self.config.cache_path)
+        self.load_config(config_path)
+        self.wdir = self.config.workspace.path
+        self.cache_dir = self.config.cache.path
+        self.base_path = self.config.tides.path
 
-        # Setup working directory
-        self.wdir = Path(self.config.wdir)
-        if self.wdir.exists():
-            shutil.rmtree(self.wdir)
-        self.wdir.mkdir()
-        (self.wdir / "results").mkdir()
-
-        if self.config.logging.enabled:
-            self.configure_logger()
-
-        self.load_tides()
+        self.setup_workspace()
+        self.configure_logging()
         self.reshape_ssc()
         self.make_combos()
-        self.pbar = tqdm(desc="MAIN", total=self.n, leave=True, unit="run")
-        self.write_metadata()
 
-    def configure_logger(self):
-        logger.enable("tidal_marsh")
-        logger.remove()
-        self.logger = logger.bind(id="MAIN")
+    def load_config(self, path):
+        def hook(d):
+            return Bunch(**{k: Path(v) if "path" in k else v for k, v in d.items()})
 
-        for handler in self.config.logging.handlers:
-            if handler.enabled:
-                handler.config.enqueue = self.config.parallel.enabled
-                if handler.type == "stderr":
-                    handler.config.sink = lambda msg: tqdm.write(msg, end="")
-                if handler.type == "file":
-                    handler.config.sink = self.wdir / "simulations.log"
-                self.logger.add(**handler.config)
+        with open(path) as file:
+            path = yaml.safe_load(file)
+            dump = json.dumps(path)
 
-    def load_tides(self):
-        self.tide_path = Path(self.config.tides.feather_path)
-        pickle_path = Path(self.cache_path / (self.tide_path.stem + ".obj"))
-        if self.config.tides.rebuild or not pickle_path.exists():
-            self.logger.info(f"Loading tides from feather file at {self.tide_path}")
-            data = tides.load_tides(self.tide_path.as_posix())
+        self.config = json.loads(dump, object_hook=hook)
 
-            self.logger.info("Building Tides object")
-            self.tide = tides.Tides(water_levels=data)
+    def configure_parallel(self, mem_per_core):
+        self.logger.info(f"Allocating {mem_per_core / 1024 ** 3:.2f} GB of RAM per core.")
+        used_mem = psutil.Process(os.getpid()).memory_info().rss
+        available_mem = psutil.virtual_memory().available
+        self.logger.info(f"RAM - Available: {available_mem / 1024 ** 3:.2f} GB, Used: {used_mem / 1024 ** 3:.2f} GB")
+        max_cores = available_mem / mem_per_core
+        self.n_cores = int(min(self.config.parallel.max_cores, max_cores))
+        self.logger.info(
+            f"Max workers set to {self.n_cores} using ~{self.n_cores * mem_per_core / 1024 ** 3:.2f} GB total."
+        )
 
-            self.logger.info(f"Caching tides to {pickle_path}.")
-            with open(pickle_path, "wb") as file:
-                pickle.dump(self.tide, file, pickle.HIGHEST_PROTOCOL)
-        else:
-            self.logger.info("Loading tides from cache.")
-            with open(pickle_path, "rb") as file:
-                self.tide = pickle.load(file)
-        self.logger.info("Tides loaded successfully.")
+    def configure_logging(self):
+        if self.config.logging.enabled:
+            logger.enable("tidal_marsh")
+            logger.remove()
+            self.logger = logger.bind(id="MAIN")
+
+            for handler in self.config.logging.handlers:
+                if handler.enabled:
+                    handler.config.enqueue = self.config.parallel.enabled
+                    if handler.type == "stderr":
+                        handler.config.sink = lambda msg: tqdm.write(msg, end="")
+                    if handler.type == "file":
+                        handler.config.sink = self.wdir / "simulations.log"
+                    self.logger.add(**handler.config)
+
+    def setup_workspace(self):
+        if self.config.workspace.rebuild and self.wdir.exists():
+            shutil.rmtree(self.wdir)
+        self.wdir.mkdir(exist_ok=True)
+        (self.wdir / "results").mkdir()
+        if self.config.cache.rebuild and self.cache_dir.exists():
+            shutil.rmtree(self.cache_dir)
+        self.cache_dir.mkdir(exist_ok=True)
 
     def reshape_ssc(self):
-        ssc = pd.DataFrame.from_records(self.config.platform.parameters.ssc, index="month").reindex(np.arange(1, 13, 1))
+        ssc = pd.DataFrame.from_records(self.config.platform.ssc, index="month").reindex(np.arange(1, 13, 1))
         ssc = pd.concat([ssc] * 2).reset_index().interpolate(method="cubicspline")
         ssc = ssc.loc[5 : 5 + 11].set_index("month").squeeze().sort_index()
-        self.config.platform.parameters.ssc = ssc
+        self.config.platform.ssc = ssc
         self.logger.info("Reshaped and interpolated SSC to monthly frequency.")
 
     def make_combos(self):
-        self.tide_params = utils.make_combos(**self.config.tides.parameters)
-        self.platform_params = utils.make_combos(**self.config.platform.parameters)
+        self.tide_params = utils.make_combos(**self.config.tides.slr, **self.config.tides.amp)
+        self.platform_params = utils.make_combos(**self.config.platform)
         self.n = len(self.tide_params) * len(self.platform_params)
-        self.logger.info(f"Made combination of parameters for a total of {self.n} runs.")
+        self.logger.info(
+            f"Made combination of parameters for a {len(self.tide_params)} different tides and"
+            f" {len(self.platform_params)} different platforms for a total of {self.n} runs."
+        )
+
+    def build_base(self):
+        base_pickle = self.cache_dir / "base.pickle"
+        if not base_pickle.exists():
+            self.logger.info(f"Base tides not in cache. Loading from {self.base_path}")
+            base = tides.load_tides(path=self.base_path.as_posix())
+            self.logger.info("Building base tide object.")
+            base = tides.Tides(water_levels=base)
+            self.logger.info(f"Caching base tides.")
+            with open(base_pickle, "wb") as file:
+                pickle.dump(base, file, pickle.HIGHEST_PROTOCOL)
+        else:
+            self.logger.info(f"Base tides already in cache.")
+
+    def build_cache(self):
+        def callback(result):
+            self.logger.debug(result["msg"])
+            self.pbar.update()
+
+        def error_callback(e):
+            self.logger.exception(e)
+
+        self.logger.info(f"Building cache for {len(self.tide_params)} different tides.")
+        results = []
+        self.pbar = tqdm(desc="TIDES", total=len(self.tide_params), leave=True, unit="tide")
+        pool = mp.Pool(processes=self.n_cores, initializer=init)
+        for params in self.tide_params:
+            kwds = {"cache_dir": self.cache_dir, **params}
+            results.append(
+                pool.apply_async(func=cache_tide, kwds=kwds, callback=callback, error_callback=error_callback)
+            )
+        pool.close()
+        pool.join()
+        self.pbar.close()
+        self.cached_tides = [r.get()["path"] for r in results]
+        self.logger.info(f"{sum([r.successful() for r in results])}/{len(results)} tides cached successfully.")
 
     def write_metadata(self):
         self.metadata = [{**d[0], **d[1]} for d in it.product(self.tide_params, self.platform_params)]
@@ -157,266 +218,37 @@ class Simulations:
         self.metadata.index.name = "id"
         self.metadata.to_csv(self.wdir / "metadata.csv")
 
-    def adjust_tides(self, z2100, b, beta, k):
-        self.logger.info(f"Adjust tides with parameters: z2100={z2100}, b={b}, beta={beta}, k={k}.")
-        water_levels = (
-            self.tide.data.elevation
-            + self.tide.calc_slr(z2100=z2100, b=b)
-            + self.tide.calc_amplification(beta=beta, k=k)
-        )
-        water_levels.to_pickle(self.cache_path / "tides.pickle")
-
-    def single(self):
-        id = 0
-        for t in self.tide_params:
-            self.adjust_tides(**t)
-            for p in self.platform_params:
-                params = Bunch(**{k: v for k, v in p.items() if "ssc" not in k})
-                params.ssc = p["ssc"] * p["ssc_factor"]
-                result = simulate(id=id, wdir=self.wdir, **params)
-                self.results.append(result)
-                id += 1
-        self.pbar.close()
-        self.logger.info("All simulations complete.")
-
-    def multiple(self):
-        def init():
-            tqdm.write(s=" ", end="")
-
-        def callback(*a):
+    def run_models(self):
+        def callback(result):
             self.pbar.update()
 
-        used_mem = psutil.Process(os.getpid()).memory_info().rss
-        available_mem = psutil.virtual_memory().available
-        max_cores = available_mem / (used_mem * 1.2)
-        self.config.parallel.pool.processes = int(min(self.config.parallel.max_cores, max_cores))
-        self.logger.info(f"Initializing multiprocessing with a pool of {self.config.parallel.pool.processes} workers.")
-        pool = mp.Pool(initializer=init, **self.config.parallel.pool)
+        def error_callback(e):
+            self.logger.exception(e)
 
+        results = []
         id = 0
-        count = 1
-        for t in self.tide_params:
-            self.adjust_tides(**t)
-            self.logger.info(
-                f"Starting batch #{count} of {len(self.tide_params)} containing runs"
-                f" {id:04} through {id+len(self.platform_params):04}."
-            )
+        self.pbar = tqdm(desc="MAIN", total=self.n, leave=True, unit="run")
+        pool = mp.Pool(processes=self.n_cores, initializer=init)
+        for tide in self.cached_tides:
             for p in self.platform_params:
                 params = Bunch(**{k: v for k, v in p.items() if "ssc" not in k})
                 params.ssc = p["ssc"] * p["ssc_factor"]
-                self.results.append(
-                    pool.apply_async(
-                        func=simulate,
-                        kwds={"id": id, "wdir": self.wdir, **params},
-                        callback=callback,
-                    )
+                kwds = {"tide": tide, "wdir": self.wdir, "id": id, **params}
+                results.append(
+                    pool.apply_async(func=simulate, kwds=kwds, callback=callback, error_callback=error_callback)
                 )
                 id += 1
-                time.sleep(0.1)
-                # self.logger.info(f"Batch #{count} sent.")
-                count += 1
+                time.sleep(1)
         pool.close()
         pool.join()
         self.pbar.close()
-        self.logger.info("All batches complete.")
+
+    def setup_tides(self):
+        self.build_base()
+        self.configure_parallel(mem_per_core=self.base_path.stat().st_size * 7)
+        self.build_cache()
 
     def run(self):
-        if self.config.parallel.enabled:
-            self.multiple()
-        else:
-            self.single()
-
-
-#         # def run(self):
-
-#         #     if self.config.parallel.enabled:
-
-#         #         def init():
-#         #             sys.stdout.write(" ")
-#         #             sys.stdout.flush()
-
-#         #         def callback(*a):
-#         #             self.pbar.update()
-
-#         #         max_cores = psutil.virtual_memory().total / (self.tide.data.memory_usage().sum() * 1.25)
-#         #         self.config.parallel.pool.processes = int(min(self.config.parallel.max_cores, max_cores))
-#         #         self.pool = mp.Pool(initializer=init, **self.config.parallel.pool)
-#         #         self.logger.info(
-#         #             f"Starting parallel processing with pool of {self.config.parallel.pool.processes} workers."
-#         #         )
-
-#         #     id = 0
-#         #     for t in self.tide_params:
-#         #         self.logger.info(f"Preparing tides for z2100={t.z2100}, b={t.b}, beta={t.beta}, k={t.k}.")
-#         #         water_levels = (
-#         #             self.tide.data.elevation
-#         #             + self.tide.calc_slr(z2100=t.z2100, b=t.b)
-#         #             + self.tide.calc_amplification(beta=t.beta, k=t.k)
-#         #         )
-#         #         self.logger.info(f"Starting runs for z2100={t.z2100}, b={t.b}, beta={t.beta}, k={t.k}.")
-#         #         params = Bunch(water_levels=water_levels, id=id, platform_params=self.platform_params)
-#         #         if self.config.parallel.enabled:
-#         #             self.pool.imap_unordered(func=self.run_one, iterable=params)
-#         #         for p in self.platform_params:
-#         #             params = {k: v for k, v in p.items() if "ssc" not in k}
-#         #             params.update(ssc=p["ssc"] * p["ssc_factor"])
-#         #             if self.config.parallel.enabled:
-#         #                 result = self.pool.apply_async(
-#         #                     func=self.run_one, args=(water_levels, params, id), callback=callback
-#         #                 )
-#         #                 self.logger.info(f"RUN #{id:04} sent to worker.")
-#         #                 # time.sleep(15)
-#         #             else:
-#         #                 result = self.run_one(water_levels, params, id)
-#         #             self.results.append(result)
-#         #             id += 1
-#         #     if self.config.parallel.enabled:
-#         #         self.pool.close()
-#         #         self.logger.info("All jobs sent. Waiting on results.")
-#         #         [r.wait() for r in self.results]
-#         #         self.logger.info("All results received.")
-#         #     self.pbar.close()
-#         # self.logger.info("All simulations complete.")
-
-
-# @logger.catch
-# def run(id, params, water_levels):
-
-#     with logger.contextualize(run=f"{id:04}"):
-
-#         ssc = params.ssc.values * params.ssc_factor
-
-#         logger.info("Initializing sediment model")
-#         model = Model(
-#             water_levels=water_levels,
-#             initial_elevation=params.elevation_start,
-#             ssc=ssc,
-#             grain_diameter=params.grain_diameter,
-#             grain_density=params.grain_density,
-#             bulk_density=params.bulk_density,
-#             organic_rate=params.organic_rate,
-#             compaction_rate=params.compaction_rate,
-#             subsidence_rate=params.subsidence_rate,
-#             id=id,
-#         )
-#         try:
-#             logger.info("Starting simulation")
-#             model.run()
-#         except:
-#             logger.exception("Issue running model")
-#         else:
-#             filename = f"{model.id:04}.csv"
-#             result_path = params.wdir / filename
-#             logger.info(f"Model completed successfully. Saved results to {result_path}")
-#             model.results.to_csv(result_path)
-#             with open(params.wdir / "overextraction.csv", "a") as file:
-#                 writer = csv.writer(file)
-#                 writer.writerow([f"{model.id:04}", model.overextraction])
-
-
-# @logger.contextualize(run="MAIN")
-# def run_all(config_file):
-
-#     config = utils.load_config(config_file)
-
-#     wdir = Path(config.wdir)
-#     if wdir.exists():
-#         shutil.rmtree(wdir)
-#     wdir.mkdir()
-
-#     def formatter(record):
-#         if "model_time" in record["extra"]:
-#             end = " | <yellow>{extra[model_time]}</yellow> | <level>{message}</level>\n{exception}"
-#         else:
-#             end = " | <level>{message}</level>\n{exception}"
-#         return config.logging.format + end
-
-#     if config.logging.enabled:
-#         logger.enable("tidal_marsh")
-#         logger.remove()
-#         for handler in config.logging.handlers:
-#             if handler.enabled:
-#                 handler.config.enqueue = config.parallel.n_jobs != 1
-#                 if handler.type == "stderr":
-#                     handler.config.sink = lambda msg: tqdm.write(msg, end="")
-#                 if handler.type == "file":
-#                     handler.config.sink = wdir / "_parallel.log"
-#                 logger.add(**handler.config, format=formatter)
-
-#     logger.info("Beginning main process")
-#     feather_path = Path(config.tides.feather_file)
-#     cache_dir = Path(config.tides.cache_dir)
-#     pickle_path = Path(cache_dir / (feather_path.stem + ".obj"))
-
-#     if config.tides.rebuild or not pickle_path.exists():
-#         logger.info(f"Loading tides from feather file at {feather_path}")
-#         data = tides.load_tides(feather_path.as_posix())
-
-#         logger.info("Building Tides object")
-#         tide = tides.Tides(water_levels=data)
-
-#         logger.info("Pickling tides")
-#         with open(pickle_path, "wb") as file:
-#             pickle.dump(tide, file, pickle.HIGHEST_PROTOCOL)
-#     else:
-#         logger.info("Loading tides from cache.")
-#         with open(pickle_path, "rb") as file:
-#             tide = pickle.load(file)
-
-#     memory_limit = tide.data.memory_usage(deep=True).sum() * 2
-
-#     ssc = pd.DataFrame.from_records(config.parameters.ssc, index="month").reindex(np.arange(1, 13, 1))
-#     ssc = pd.concat([ssc] * 2).reset_index().interpolate(method="cubicspline")
-#     ssc = ssc.loc[5 : 5 + 11].set_index("month").squeeze().sort_index()
-#     config.parameters.ssc = ssc
-
-#     config.parameters.wdir = wdir
-
-#     logger.info("Making combos of parameters.")
-#     param_combos = utils.make_combos(**config.parameters)
-#     tide_combos = utils.make_combos(**config.tides.parameters)
-#     n = len(tide_combos) * len(param_combos)
-
-#     info = [{**d[0], **d[1]} for d in it.product(tide_combos, param_combos)]
-#     info = pd.DataFrame.from_records(info).drop(columns=["ssc", "wdir"])
-#     info.index.name = "id"
-#     info.to_csv(wdir / "_info.csv")
-
-#     def init():
-#         sys.stdout.write(" ")
-#         sys.stdout.flush()
-
-#     def callback(*a):
-#         pbar.update()
-
-#     logger.info(f"Starting parallel processing with pool of {config.parallel.n_jobs} workers.")
-#     pbar = tqdm(desc="MAIN", total=n, leave=True, unit="run")
-#     id = 0
-#     with mp.Pool(processes=config.parallel.n_jobs, initializer=init, maxtasksperchild=1) as pool:
-#         results = []
-#         for t in tide_combos:
-#             logger.info(f"Preparing tides for z2100={t.z2100}, b={t.b}, beta={t.beta}, k={t.k}.")
-#             water_levels = (
-#                 tide.data.elevation + tide.calc_slr(z2100=t.z2100, b=t.b) + tide.calc_amplification(beta=t.beta, k=t.k)
-#             )
-#             logger.info(f"Starting runs for z2100={t.z2100}, b={t.b}, beta={t.beta}, k={t.k}.")
-#             for p in param_combos:
-#                 check_system_resources(id=id, memory_limit=memory_limit)
-#                 results.append(pool.apply_async(func=run, args=(id, p, water_levels), callback=callback))
-#                 time.sleep(15)
-#                 id += 1
-#         logger.info("All jobs sent. Waiting on results.")
-#         [r.wait() for r in results]
-#         logger.info("All results received.")
-#         pbar.close()
-#     logger.info("All simulations complete.")
-
-
-# def check_system_resources(id, memory_limit):
-#     used_frac = psutil.virtual_memory().used / psutil.virtual_memory().total
-#     while psutil.virtual_memory().available < memory_limit:
-#         logger.info(f"Waiting for more free memory before initializing RUN #{id:04}.")
-#         logger.info(f"Used RAM: {psutil.virtual_memory().used / 1024 ** 3:.2f} GB; Percent: {used_frac:.2%}")
-#         time.sleep(5)
-#     logger.info(f"Sending RUN #{id:04} to worker.")
-#     logger.info(f"Used RAM: {psutil.virtual_memory().used / 1024 ** 3:.2f} GB; Percent: {used_frac:.2%}")
+        self.write_metadata()
+        self.configure_parallel(mem_per_core=self.base_path.stat().st_size * 1.5)
+        self.run_models()

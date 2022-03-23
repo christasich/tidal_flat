@@ -1,11 +1,16 @@
+workspace:
+  rebuild: True
+  path: ./models/02
+
+cache:
+  rebuild: False
+  path: .cache/
+
 parallel:
   enabled: True
   max_cores: 70
-  pool:
-    maxtasksperchild: 1
-
-wdir: ./models/02
-cache_path: .cache/
+  # pool:
+  #   maxtasksperchild: 1
 
 logging:
   enabled: True
@@ -28,7 +33,7 @@ logging:
     - type: file
       enabled: True
       config:
-        level: INFO
+        level: DEBUG
         format: >-
           {time:YYYY-MM-DD HH:mm:ss} |
           {elapsed} |
@@ -43,24 +48,23 @@ logging:
         serialize: False
 
 tides:
-  rebuild: False
   path: ./data/processed/tides_2020-2120.feather
-  parameters:
+  slr:
     z2100: [0.3, 0.7, 1.1]
     b: 0.003
-    beta: [0.015, 0.0075, 0.0]
+  amp:
+    beta: [0.0015, 0.0075, 0.0]
     k: [-10, -30, -50]
 
 platform:
-  parameters:
-    initial_elevation: [1.5, 2.6]
-    ssc:
-      month: [6, 9]
-      value: [0.1, 0.4]
-    ssc_factor: [0.5, 1, 1.5]
-    grain_diameter: [1.5e-5, 2.5e-5, 3.5e-5]
-    grain_density: 2.65e+3
-    bulk_density: [800, 1000, 1200]
-    organic_rate: 2.0e-4
-    compaction_rate: -4.0e-3
-    subsidence_rate: -3.0e-3
+  initial_elevation: [1.5, 2.6]
+  ssc:
+    month: [6, 9]
+    value: [0.1, 0.4]
+  ssc_factor: [0.5, 1, 1.5]
+  grain_diameter: [1.5e-5, 2.5e-5, 3.5e-5]
+  grain_density: 2.65e+3
+  bulk_density: [800, 1000, 1200]
+  organic_rate: 2.0e-4
+  compaction_rate: -4.0e-3
+  subsidence_rate: -3.0e-3
