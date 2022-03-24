@@ -1,6 +1,9 @@
-###############################
-# Git Large File System (LFS) #
+# Line endings
+* text=auto eol=lf
+*.{cmd,[cC][mM][dD]} text eol=crlf
+*.{bat,[bB][aA][tT]} text eol=crlf
 
+# Git Large File System (LFS) Filters
 # Archives
 *.7z filter=lfs diff=lfs merge=lfs -text
 *.br filter=lfs diff=lfs merge=lfs -text
