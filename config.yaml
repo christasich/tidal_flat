@@ -8,7 +8,7 @@ cache:
 
 parallel:
   enabled: True
-  max_cores: 70
+  max_cores: 69
   # pool:
   #   maxtasksperchild: 1
 
