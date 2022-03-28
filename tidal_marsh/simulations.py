@@ -94,6 +94,7 @@ class Simulations:
     wdir: Path = field(init=False)
     cache_dir: Path = field(init=False)
     base_path: Path = field(init=False)
+    base_size: float = field(init=False)
     cached_tides: list = field(init=False, default_factory=list)
     logger: _Logger = field(init=False)
     n_cores: int = 1
@@ -152,10 +153,10 @@ class Simulations:
                     self.logger.add(**handler.config)
 
     def setup_workspace(self):
-        if self.config.workspace.rebuild and self.wdir.exists():
+        if self.config.workspace.overwrite and self.wdir.exists():
             shutil.rmtree(self.wdir)
         self.wdir.mkdir(exist_ok=True)
-        (self.wdir / "results").mkdir()
+        (self.wdir / "simulations").mkdir()
         if self.config.cache.rebuild and self.cache_dir.exists():
             shutil.rmtree(self.cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
@@ -177,17 +178,19 @@ class Simulations:
         )
 
     def build_base(self):
+        self.logger.info("Loading base tides from pickle file at {self.base_path}.")
+        base = pd.read_pickle(self.base_path)
+        self.base_size = base.memory_usage()
+        self.logger.info(f"Base tide is {self.base_size / 1024 ** 3} GB.")
         base_pickle = self.cache_dir / "base.pickle"
         if not base_pickle.exists():
-            self.logger.info(f"Base tides not in cache. Loading from {self.base_path}")
-            base = tides.load_tides(path=self.base_path.as_posix())
-            self.logger.info("Building base tide object.")
-            base = tides.Tides(water_levels=base)
+            self.logger.info(f"Tide object not in cache. Creating from base tides.")
+            tide_obj = tides.Tides(water_levels=base)
             self.logger.info(f"Caching base tides.")
             with open(base_pickle, "wb") as file:
-                pickle.dump(base, file, pickle.HIGHEST_PROTOCOL)
+                pickle.dump(tide_obj, file, pickle.HIGHEST_PROTOCOL)
         else:
-            self.logger.info(f"Base tides already in cache.")
+            self.logger.info(f"Tide object already in cache.")
 
     def build_cache(self):
         def callback(result):
@@ -243,12 +246,12 @@ class Simulations:
         pool.join()
         self.pbar.close()
 
-    def setup_tides(self):
+    def prepare_tides(self):
         self.build_base()
-        self.configure_parallel(mem_per_core=self.base_path.stat().st_size * 7)
+        self.configure_parallel(mem_per_core=self.base_size * 7)
         self.build_cache()
 
     def run(self):
         self.write_metadata()
-        self.configure_parallel(mem_per_core=self.base_path.stat().st_size * 1.5)
+        self.configure_parallel(mem_per_core=self.base_size * 1.1)
         self.run_models()

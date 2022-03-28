@@ -1,6 +1,6 @@
 workspace:
-  rebuild: True
-  path: ./models/02
+  overwrite: True
+  path: ./results
 
 cache:
   rebuild: False
@@ -21,7 +21,7 @@ logging:
         level: TRACE
         format: >-
           <green>{time:YYYY-MM-DD HH:mm:ss}</green> |
-          <red>{elapsed}{/red} |
+          <red>{elapsed}</red> |
           <magenta>{process}</magenta> |
           <level>{level: <8}</level> |
           <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> |
@@ -48,7 +48,7 @@ logging:
         serialize: False
 
 tides:
-  path: ./data/processed/tides_2020-2120.feather
+  path: ../data/processed/tides_2020-2120.pickle
   slr:
     z2100: [0.3, 0.7, 1.1]
     b: 0.003
