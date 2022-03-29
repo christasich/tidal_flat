@@ -37,7 +37,7 @@ class Inundation:
         self.slack = self.water_levels.idxmax()
         self.slack_elevation = self.water_levels.max()
         while self.water_levels.shape[0] <= 3:
-            freq = self.water_levels.index.freq / 2
+            freq = (self.water_levels.index.freq / 2).freqstr
             self.logger.debug(
                 f"Inundation is < 3 data points. Spline interpolation requires k=3. Upsampling to {freq}."
             )

@@ -41,7 +41,7 @@ def cache_tide(cache_dir, z2100, b, beta, k):
         base = pickle.load(file)
     water_levels = base.data.elevation + base.calc_slr(z2100=z2100, b=b) + base.calc_amplification(beta=beta, k=k)
     water_levels.to_frame(name="elvevation").squeeze().to_pickle(path)
-    logger.info(f"Complete. {filename} cached successfully.")
+    logger.info(f"Done. {filename} cached successfully.")
     return path
 
 
@@ -75,10 +75,12 @@ def simulate(
         result_path = wdir / "results" / f"{id:04}.csv"
         model.results.to_csv(result_path)
 
-    with open(wdir / "overextraction.csv", "a") as file:
-        writer = csv.writer(file)
-        writer.writerow([f"{id:04}", model.overextraction])
-    logger.info(f"Model completed successfully. Saved results to {result_path}")
+        if model.overextraction > 0.01:
+            logger.warning(f"Model overextraction > 1 cm. Total: {model.overextraction * 100:.2f} cm.")
+        with open(wdir / "results" / "_overextraction.csv", "a") as file:
+            writer = csv.writer(file)
+            writer.writerow([f"{id:04}", model.overextraction])
+    logger.info(f"Done. Results saved to {result_path}")
 
 
 @dataclass
@@ -130,7 +132,7 @@ class Simulations:
                     "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <red>{elapsed}</red> | <magenta>{process}</magenta> |"
                     " <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
                 )
-                end = "<level>{message}</level> \n{exception}"
+                end = "<level>{message}</level>\n{exception}"
                 if "model_time" in record["extra"]:
                     end = "<green>{extra[model_time]}</green> | " + end
                 if "id" in record["extra"]:
@@ -186,10 +188,10 @@ class Simulations:
         )
 
     def build_base(self):
-        self.logger.info("Loading base tides from pickle file at {self.base_path}.")
+        self.logger.info(f"Loading base tides from pickle file at {self.base_path}.")
         base = pd.read_pickle(self.base_path)
         self.base_size = base.memory_usage()
-        self.logger.info(f"Base tide is {self.base_size / 1024 ** 3} GB.")
+        self.logger.info(f"Base tide is {self.base_size / 1024 ** 3:.2f} GB.")
         base_pickle = self.cache_path / "base.pickle"
         if not base_pickle.exists():
             self.logger.info(f"Tide object not in cache. Creating from base tides.")
@@ -202,11 +204,7 @@ class Simulations:
 
     def build_cache(self):
         def callback(result):
-            self.logger.debug(result["msg"])
             self.pbar.update()
-
-        def error_callback(e):
-            self.logger.exception(e)
 
         self.logger.info(f"Building cache for {len(self.tide_params)} different tides.")
         results = []
@@ -214,20 +212,18 @@ class Simulations:
         pool = mp.Pool(processes=self.n_cores, initializer=init)
         for params in self.tide_params:
             kwds = {"cache_dir": self.cache_path, **params}
-            results.append(
-                pool.apply_async(func=cache_tide, kwds=kwds, callback=callback, error_callback=error_callback)
-            )
+            results.append(pool.apply_async(func=cache_tide, kwds=kwds, callback=callback))
         pool.close()
         pool.join()
         self.pbar.close()
-        self.cached_tides = [r.get()["path"] for r in results]
+        self.cached_tides = [r.get() for r in results]
         self.logger.info(f"{sum([r.successful() for r in results])}/{len(results)} tides cached successfully.")
 
     def write_metadata(self):
         self.metadata = [{**d[0], **d[1]} for d in it.product(self.tide_params, self.platform_params)]
         self.metadata = pd.DataFrame.from_records(self.metadata).drop(columns=["ssc"])
         self.metadata.index.name = "id"
-        self.metadata.to_csv(self.wdir / "metadata.csv")
+        self.metadata.to_csv(self.results_path / "_metadata.csv")
 
     def setup(self):
         self.build_base()
@@ -240,9 +236,6 @@ class Simulations:
         def callback(result):
             self.pbar.update()
 
-        def error_callback(e):
-            self.logger.exception(e)
-
         results = []
         id = 0
         self.pbar = tqdm(desc="MAIN", total=self.n, leave=True, unit="run")
@@ -252,9 +245,7 @@ class Simulations:
                 params = Bunch(**{k: v for k, v in p.items() if "ssc" not in k})
                 params.ssc = p["ssc"] * p["ssc_factor"]
                 kwds = {"tide": tide, "wdir": self.wdir, "id": id, **params}
-                results.append(
-                    pool.apply_async(func=simulate, kwds=kwds, callback=callback, error_callback=error_callback)
-                )
+                results.append(pool.apply_async(func=simulate, kwds=kwds, callback=callback))
                 id += 1
                 time.sleep(1)
         pool.close()

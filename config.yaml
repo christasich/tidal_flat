@@ -30,7 +30,7 @@ logging:
         serialize: False
 
 tides:
-  path: ../data/processed/tides_2020-2120.pickle
+  path: ./data/processed/tides_2020-2120.pickle
   slr:
     z2100: [0.3, 0.7, 1.1]
     b: 0.003

@@ -59,7 +59,7 @@ class Model:
             total=self.period.ceil("D").days,
             leave=True,
             unit="Day",
-            position=self.id + 1,
+            # position=self.id + 1,
             postfix={"Date": self.now.strftime("%Y-%m-%d"), "Elevation": self.elevation},
         )
         self.water_levels = self.water_levels.rename("water_level")
@@ -115,16 +115,16 @@ class Model:
 
     def validate_inundation(self, inundation: Inundation) -> None:
         if inundation.result.success is False:
-            self.logger.debug(f"Integration failed! {inundation.result.message}")
+            self.logger.warning(f"Integration failed! {inundation.result.message}")
         if (inundation.data.aggradation < 0.0).any():
-            self.logger.debug(
+            self.logger.warning(
                 f"Solution has negative aggradations! {inundation.data.loc[inundation.data.aggradation < 0]}"
             )
         if (inundation.data.aggradation_max < inundation.data.aggradation).any():
             overextraction = inundation.data.aggradation.values[-1] - inundation.data.aggradation_max.values[-1]
             self.overextraction += overextraction
             over_frac = inundation.data.aggradation.values[-1] / inundation.data.aggradation_max.values[-1]
-            self.logger.debug(
+            self.logger.trace(
                 f"Solution results in overextraction! Amount: {inundation.overextraction:.2e} m, Percent:"
                 f" {over_frac:.2%} Total: {self.overextraction:.2e} m"
             )
@@ -145,10 +145,10 @@ class Model:
 
         while len(roots) < 2:
             if subset.index[-1] == self.end and len(roots) == 1:
-                self.logger.debug(f"Partial inundation remaining.")
+                self.logger.trace(f"Partial inundation remaining.")
                 return subset.iloc[roots[0] + 1 :]
             elif subset.index[-1] == self.end and len(roots) == 0:
-                self.logger.debug(f"No inundations remaining.")
+                self.logger.trace(f"No inundations remaining.")
                 return None
             else:
                 n = n * 1.5
