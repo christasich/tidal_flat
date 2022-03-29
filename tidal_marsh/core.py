@@ -12,6 +12,7 @@ from . import utils
 from .inundation import Inundation
 from datetime import datetime
 
+
 @dataclass
 class Model:
     # input these fields
@@ -34,7 +35,7 @@ class Model:
     degradation_total: float = field(init=False, default=0.0)
     overextraction: float = field(init=False, default=0.0)
     inundations: list = field(init=False, default_factory=list)
-    results: list = field(init=False, default_factory=list)
+    results: list | pd.DataFrame = field(init=False, default_factory=list)
     start: pd.Timestamp = field(init=False)
     end: pd.Timestamp = field(init=False)
     now: pd.Timestamp = field(init=False)
@@ -151,7 +152,7 @@ class Model:
                 return None
             else:
                 n = n * 1.5
-                self.logger.debug(f"Expanding search window to {n}.")
+                self.logger.trace(f"Expanding search window to {n}.")
                 subset = self.water_levels.loc[self.now : self.now + n].to_frame(name="water_level")
                 subset["elevation"] = self.calculate_elevation(to=subset.index[-1])
                 roots = utils.find_roots(a=subset.water_level.values, b=subset.elevation.values)

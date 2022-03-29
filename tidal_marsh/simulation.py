@@ -86,7 +86,8 @@ class Simulations:
     config_path: InitVar[str]
     config: Bunch = field(init=False)
     wdir: Path = field(init=False)
-    cache_dir: Path = field(init=False)
+    cache_path: Path = field(init=False)
+    results_path: Path = field(init=False)
     base_path: Path = field(init=False)
     base_size: float = field(init=False)
     cached_tides: list = field(init=False, default_factory=list)
@@ -102,7 +103,8 @@ class Simulations:
     def __post_init__(self, config_path):
         self.load_config(config_path)
         self.wdir = self.config.workspace.path
-        self.cache_dir = self.config.cache.path
+        self.cache_path = self.config.cache.path
+        self.results_path = self.wdir / "results"
         self.base_path = self.config.tides.path
 
         self.setup_workspace()
@@ -146,16 +148,15 @@ class Simulations:
                         handler.config.sink = lambda msg: tqdm.write(msg, end="")
                     if handler.type == "file":
                         handler.config.sink = self.wdir / "simulation.log"
-                    self.logger.add(**handler.config)
+                    self.logger.add(**handler.config, format=formatter)
 
     def setup_workspace(self):
-        if self.config.workspace.overwrite and self.wdir.exists():
-            shutil.rmtree(self.wdir)
-        self.wdir.mkdir(exist_ok=True)
-        (self.wdir / "simulations").mkdir()
-        if self.config.cache.rebuild and self.cache_dir.exists():
-            shutil.rmtree(self.cache_dir)
-        self.cache_dir.mkdir(exist_ok=True)
+        if self.config.workspace.overwrite and self.results_path.exists():
+            shutil.rmtree(self.results_path)
+        self.results_path.mkdir(exist_ok=True)
+        if self.config.cache.rebuild and self.cache_path.exists():
+            shutil.rmtree(self.cache_path)
+        self.cache_path.mkdir(exist_ok=True)
 
     def reshape_ssc(self):
         ssc = pd.DataFrame.from_records(self.config.platform.ssc, index="month").reindex(np.arange(1, 13, 1))
@@ -189,7 +190,7 @@ class Simulations:
         base = pd.read_pickle(self.base_path)
         self.base_size = base.memory_usage()
         self.logger.info(f"Base tide is {self.base_size / 1024 ** 3} GB.")
-        base_pickle = self.cache_dir / "base.pickle"
+        base_pickle = self.cache_path / "base.pickle"
         if not base_pickle.exists():
             self.logger.info(f"Tide object not in cache. Creating from base tides.")
             tide_obj = tides.Tides(water_levels=base)
@@ -212,7 +213,7 @@ class Simulations:
         self.pbar = tqdm(desc="TIDES", total=len(self.tide_params), leave=True, unit="tide")
         pool = mp.Pool(processes=self.n_cores, initializer=init)
         for params in self.tide_params:
-            kwds = {"cache_dir": self.cache_dir, **params}
+            kwds = {"cache_dir": self.cache_path, **params}
             results.append(
                 pool.apply_async(func=cache_tide, kwds=kwds, callback=callback, error_callback=error_callback)
             )
@@ -227,6 +228,13 @@ class Simulations:
         self.metadata = pd.DataFrame.from_records(self.metadata).drop(columns=["ssc"])
         self.metadata.index.name = "id"
         self.metadata.to_csv(self.wdir / "metadata.csv")
+
+    def setup(self):
+        self.build_base()
+        self.configure_parallel(mem_per_core=self.base_size * 7)
+        self.build_cache()
+        self.write_metadata()
+        self.configure_parallel(mem_per_core=self.base_size * 1.1)
 
     def run(self):
         def callback(result):
@@ -252,10 +260,3 @@ class Simulations:
         pool.close()
         pool.join()
         self.pbar.close()
-
-    def setup(self):
-        self.build_base()
-        self.configure_parallel(mem_per_core=self.base_size * 7)
-        self.build_cache()
-        self.write_metadata()
-        self.configure_parallel(mem_per_core=self.base_size * 1.1)

@@ -1,5 +1,5 @@
 workspace:
-  overwrite: True
+  overwrite: False
   path: .
 
 cache:
@@ -8,9 +8,7 @@ cache:
 
 parallel:
   enabled: True
-  max_cores: 69
-  # pool:
-  #   maxtasksperchild: 1
+  max_cores: 70
 
 logging:
   enabled: True
@@ -19,14 +17,6 @@ logging:
       enabled: False
       config:
         level: TRACE
-        format: >-
-          <green>{time:YYYY-MM-DD HH:mm:ss}</green> |
-          <red>{elapsed}</red> |
-          <magenta>{process}</magenta> |
-          <level>{level: <8}</level> |
-          <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> |
-          <light-blue>{extra[id]}</light-blue> |
-          <level>{message}</level>
         colorize: True
         backtrace: False
         diagnose: True
@@ -34,16 +24,8 @@ logging:
       enabled: True
       config:
         level: DEBUG
-        format: >-
-          {time:YYYY-MM-DD HH:mm:ss} |
-          {elapsed} |
-          {process} |
-          {level: <8} |
-          {name}:{function}:{line} |
-          {extra[id]} |
-          {message}
         mode: w
-        backtrace: False
+        backtrace: True
         diagnose: True
         serialize: False
 

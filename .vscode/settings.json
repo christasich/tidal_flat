@@ -1,5 +1,5 @@
 {
-  "jupyter.jupyterServerType": "remote",
+  "jupyter.jupyterServerType": "local",
   "jupyter.disableJupyterAutoStart": true,
   "python.analysis.completeFunctionParens": true,
   "jupyter.allowUnauthorizedRemoteConnection": true,

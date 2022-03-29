@@ -53,10 +53,7 @@ class Inundation:
             constant_rates=constant_rates,
         )
         self.overextraction = 0.0
-        try:
-            self.integrate()
-        except Exception as e:
-            self.logger.error(e)
+        self.integrate()
 
     @staticmethod
     def solve_odes(t, y, params):
