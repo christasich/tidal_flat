@@ -1,5 +1,5 @@
 workspace:
-  overwrite: False
+  overwrite: True
   path: .
 
 cache:
