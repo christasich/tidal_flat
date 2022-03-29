@@ -2,12 +2,12 @@ from loguru import logger
 
 from . import constants
 from . import core
-from . import simulations
+from . import simulation
 from . import tides
 from . import utils
 from .constants import *
 from .core import *
-from .simulations import *
+from .simulation import *
 from .tides import *
 from .utils import *
 

@@ -1,6 +1,6 @@
 workspace:
   overwrite: True
-  path: ./results
+  path: .
 
 cache:
   rebuild: False

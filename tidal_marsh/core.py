@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 from . import constants
 from . import utils
 from .inundation import Inundation
-
+from datetime import datetime
 
 @dataclass
 class Model:
@@ -51,7 +51,7 @@ class Model:
         self.end = self.water_levels.index[-1]
         self.period = self.water_levels.index[-1] - self.water_levels.index[0]
         self.timestep = pd.Timedelta(self.water_levels.index.freq)
-        self.logger = logger.bind(id=f"{self.id:04}")
+        self.logger = logger.patch(lambda record: record["extra"].update(model_time=self.now))
         self.update(index=self.start, elevation=initial_elevation)
         self.pbar = tqdm(
             desc=f"{self.id:04}",
@@ -82,7 +82,7 @@ class Model:
         self.ssc = ssc_series.loc[self.water_levels.index[0] : self.water_levels.index[-1]]
 
         if self.water_levels.iat[0] > self.elevation:
-            self.logger.debug(f"{self.now} | Tide starts above platform. Skipping first inundation.")
+            self.logger.debug(f"Tide starts above platform. Skipping first inundation.")
             elevation = self.calculate_elevation(to=self.end)
             i = (elevation > self.water_levels).argmax()
             self.update(index=self.water_levels.index[i], elevation=elevation[i])
@@ -114,23 +114,22 @@ class Model:
 
     def validate_inundation(self, inundation: Inundation) -> None:
         if inundation.result.success is False:
-            self.logger.debug(f"{self.now} | Integration failed! {inundation.result.message}")
+            self.logger.debug(f"Integration failed! {inundation.result.message}")
         if (inundation.data.aggradation < 0.0).any():
             self.logger.debug(
-                f"{self.now} | Solution has negative aggradations!"
-                f" {inundation.data.loc[inundation.data.aggradation < 0]}"
+                f"Solution has negative aggradations! {inundation.data.loc[inundation.data.aggradation < 0]}"
             )
         if (inundation.data.aggradation_max < inundation.data.aggradation).any():
             overextraction = inundation.data.aggradation.values[-1] - inundation.data.aggradation_max.values[-1]
             self.overextraction += overextraction
             over_frac = inundation.data.aggradation.values[-1] / inundation.data.aggradation_max.values[-1]
             self.logger.debug(
-                f"{self.now} | Solution results in overextraction! Amount: {inundation.overextraction:.2e} m, Percent:"
+                f"Solution results in overextraction! Amount: {inundation.overextraction:.2e} m, Percent:"
                 f" {over_frac:.2%} Total: {self.overextraction:.2e} m"
             )
 
     def update(self, index: pd.Timestamp, elevation: float) -> None:
-        self.logger.trace(f"{self.now} | Updating results - Date: {index}, Elevation={elevation}")
+        self.logger.trace(f"Updating results - Date: {index}, Elevation={elevation}")
         self.results.append({"index": index, "elevation": elevation})
         self.now = index
         self.elevation = elevation
@@ -145,24 +144,24 @@ class Model:
 
         while len(roots) < 2:
             if subset.index[-1] == self.end and len(roots) == 1:
-                self.logger.debug(f"{self.now} | Partial inundation remaining.")
+                self.logger.debug(f"Partial inundation remaining.")
                 return subset.iloc[roots[0] + 1 :]
             elif subset.index[-1] == self.end and len(roots) == 0:
-                self.logger.debug(f"{self.now} | No inundations remaining.")
+                self.logger.debug(f"No inundations remaining.")
                 return None
             else:
                 n = n * 1.5
-                self.logger.debug(f"{self.now} | Expanding search window to {n}.")
+                self.logger.debug(f"Expanding search window to {n}.")
                 subset = self.water_levels.loc[self.now : self.now + n].to_frame(name="water_level")
                 subset["elevation"] = self.calculate_elevation(to=subset.index[-1])
                 roots = utils.find_roots(a=subset.water_level.values, b=subset.elevation.values)
-        self.logger.trace(f"{self.now} | Found complete inundation.")
+        self.logger.trace(f"Found complete inundation.")
         return subset.iloc[roots[0] + 1 : roots[1] + 2]
 
     def step(self) -> None:
         subset = self.find_next_inundation()
         if subset is not None:
-            self.logger.trace(f"{self.now} | Initializing Inundation at {subset.index[0]}.")
+            self.logger.trace(f"Initializing Inundation at {subset.index[0]}.")
             inundation = Inundation(
                 water_levels=subset.water_level,
                 initial_elevation=subset.elevation.iat[0],
@@ -178,7 +177,7 @@ class Model:
             self.validate_inundation(inundation=inundation)
             self.update(index=inundation.data.index[-1], elevation=inundation.data.elevation.iat[-1])
         else:
-            self.logger.debug(f"{self.now} | All inundations processed.")
+            self.logger.debug(f"All inundations processed.")
             elevation = self.calculate_elevation(at=self.end)
             self.update(index=self.end, elevation=elevation)
 

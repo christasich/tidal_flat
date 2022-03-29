@@ -32,20 +32,17 @@ def init():
 
 
 def cache_tide(cache_dir, z2100, b, beta, k):
-    try:
-        filename = f"tides.z2100_{z2100}.b_{b}.beta_{beta}.k_{k}.pickle"
-        path = cache_dir / filename
-        if path.exists():
-            msg = f"Skipping. {filename} already in cache."
-            return {"path": path, "msg": msg}
-        with open(cache_dir / "base.pickle", "rb") as file:
-            base = pickle.load(file)
-        water_levels = base.data.elevation + base.calc_slr(z2100=z2100, b=b) + base.calc_amplification(beta=beta, k=k)
-        water_levels.to_frame(name="elvevation").squeeze().to_pickle(path)
-        msg = f"Complete. {filename} cached successfully."
-        return {"path": path, "msg": msg}
-    except Exception as e:
-        raise e
+    filename = f"tides.z2100_{z2100}.b_{b}.beta_{beta}.k_{k}.pickle"
+    path = cache_dir / filename
+    if path.exists():
+        logger.info(f"Skipping. {filename} already in cache.")
+        return path
+    with open(cache_dir / "base.pickle", "rb") as file:
+        base = pickle.load(file)
+    water_levels = base.data.elevation + base.calc_slr(z2100=z2100, b=b) + base.calc_amplification(beta=beta, k=k)
+    water_levels.to_frame(name="elvevation").squeeze().to_pickle(path)
+    logger.info(f"Complete. {filename} cached successfully.")
+    return path
 
 
 def simulate(
@@ -61,8 +58,7 @@ def simulate(
     wdir,
     id=0,
 ):
-
-    try:
+    with logger.contextualize(id=f"{id:04}"):
         model = Model(
             water_levels=pd.read_pickle(tide),
             initial_elevation=initial_elevation,
@@ -76,15 +72,13 @@ def simulate(
             id=id,
         )
         model.run()
-
         result_path = wdir / "results" / f"{id:04}.csv"
         model.results.to_csv(result_path)
-        with open(wdir / "overextraction.csv", "a") as file:
-            writer = csv.writer(file)
-            writer.writerow([f"{id:04}", model.overextraction])
-        return f"Model completed successfully. Saved results to {result_path}"
-    except Exception as e:
-        raise e
+
+    with open(wdir / "overextraction.csv", "a") as file:
+        writer = csv.writer(file)
+        writer.writerow([f"{id:04}", model.overextraction])
+    logger.info(f"Model completed successfully. Saved results to {result_path}")
 
 
 @dataclass
@@ -126,19 +120,21 @@ class Simulations:
 
         self.config = json.loads(dump, object_hook=hook)
 
-    def configure_parallel(self, mem_per_core):
-        self.logger.info(f"Allocating {mem_per_core / 1024 ** 3:.2f} GB of RAM per core.")
-        used_mem = psutil.Process(os.getpid()).memory_info().rss
-        available_mem = psutil.virtual_memory().available
-        self.logger.info(f"RAM - Available: {available_mem / 1024 ** 3:.2f} GB, Used: {used_mem / 1024 ** 3:.2f} GB")
-        max_cores = available_mem / mem_per_core
-        self.n_cores = int(min(self.config.parallel.max_cores, max_cores))
-        self.logger.info(
-            f"Max workers set to {self.n_cores} using ~{self.n_cores * mem_per_core / 1024 ** 3:.2f} GB total."
-        )
-
     def configure_logging(self):
         if self.config.logging.enabled:
+
+            def formatter(record):
+                start = (
+                    "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <red>{elapsed}</red> | <magenta>{process}</magenta> |"
+                    " <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
+                )
+                end = "<level>{message}</level> \n{exception}"
+                if "model_time" in record["extra"]:
+                    end = "<green>{extra[model_time]}</green> | " + end
+                if "id" in record["extra"]:
+                    end = "<light-blue>{extra[id]}</light-blue> | " + end
+                return start + end
+
             logger.enable("tidal_marsh")
             logger.remove()
             self.logger = logger.bind(id="MAIN")
@@ -149,7 +145,7 @@ class Simulations:
                     if handler.type == "stderr":
                         handler.config.sink = lambda msg: tqdm.write(msg, end="")
                     if handler.type == "file":
-                        handler.config.sink = self.wdir / "simulations.log"
+                        handler.config.sink = self.wdir / "simulation.log"
                     self.logger.add(**handler.config)
 
     def setup_workspace(self):
@@ -175,6 +171,17 @@ class Simulations:
         self.logger.info(
             f"Made combination of parameters for a {len(self.tide_params)} different tides and"
             f" {len(self.platform_params)} different platforms for a total of {self.n} runs."
+        )
+
+    def configure_parallel(self, mem_per_core):
+        self.logger.info(f"Allocating {mem_per_core / 1024 ** 3:.2f} GB of RAM per core.")
+        used_mem = psutil.Process(os.getpid()).memory_info().rss
+        available_mem = psutil.virtual_memory().available
+        self.logger.info(f"RAM - Available: {available_mem / 1024 ** 3:.2f} GB, Used: {used_mem / 1024 ** 3:.2f} GB")
+        max_cores = available_mem / mem_per_core
+        self.n_cores = int(min(self.config.parallel.max_cores, max_cores))
+        self.logger.info(
+            f"Max workers set to {self.n_cores} using ~{self.n_cores * mem_per_core / 1024 ** 3:.2f} GB total."
         )
 
     def build_base(self):
@@ -221,7 +228,7 @@ class Simulations:
         self.metadata.index.name = "id"
         self.metadata.to_csv(self.wdir / "metadata.csv")
 
-    def run_models(self):
+    def run(self):
         def callback(result):
             self.pbar.update()
 
@@ -246,12 +253,9 @@ class Simulations:
         pool.join()
         self.pbar.close()
 
-    def prepare_tides(self):
+    def setup(self):
         self.build_base()
         self.configure_parallel(mem_per_core=self.base_size * 7)
         self.build_cache()
-
-    def run(self):
         self.write_metadata()
         self.configure_parallel(mem_per_core=self.base_size * 1.1)
-        self.run_models()
