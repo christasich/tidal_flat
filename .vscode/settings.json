@@ -10,16 +10,16 @@
   // "code-runner.executorMap": {
   //     "python": "$pythonPath -u $fullFileName"
   // },
-  "terminal.integrated.profiles.linux": {
-    "tmux": {
-      "path": "/usr/bin/tmux",
-      "args": [
-        "new-session",
-        "-A",
-        "-s",
-        "vscode-${workspaceFolderBasename}"
-      ],
-    },
-  },
-  "terminal.integrated.defaultProfile.linux": "tmux",
+  // "terminal.integrated.profiles.linux": {
+  //   "tmux": {
+  //     "path": "/usr/bin/tmux",
+  //     "args": [
+  //       "new-session",
+  //       "-A",
+  //       "-s",
+  //       "vscode-${workspaceFolderBasename}"
+  //     ],
+  //   },
+  // },
+  // "terminal.integrated.defaultProfile.linux": "tmux",
 }

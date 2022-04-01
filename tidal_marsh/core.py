@@ -57,9 +57,10 @@ class Model:
         self.pbar = tqdm(
             desc=f"{self.id:04}",
             total=self.period.ceil("D").days,
-            leave=True,
+            leave=False,
             unit="Day",
-            # position=self.id + 1,
+            dynamic_ncols=True,
+            position=self.id + 1,
             postfix={"Date": self.now.strftime("%Y-%m-%d"), "Elevation": self.elevation},
         )
         self.water_levels = self.water_levels.rename("water_level")

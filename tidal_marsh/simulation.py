@@ -1,5 +1,5 @@
 import multiprocessing as mp
-from multiprocessing.pool import Pool
+from multiprocessing import Pool, RLock, freeze_support
 import os
 import pickle
 import random
@@ -77,7 +77,7 @@ def simulate(
 
         if model.overextraction > 0.01:
             logger.warning(f"Model overextraction > 1 cm. Total: {model.overextraction * 100:.2f} cm.")
-        with open(wdir / "results" / "_overextraction.csv", "a") as file:
+        with open(wdir / "_overextraction.csv", "a") as file:
             writer = csv.writer(file)
             writer.writerow([f"{id:04}", model.overextraction])
     logger.info(f"Done. Results saved to {result_path}")
@@ -89,7 +89,6 @@ class Simulations:
     config: Bunch = field(init=False)
     wdir: Path = field(init=False)
     cache_path: Path = field(init=False)
-    results_path: Path = field(init=False)
     base_path: Path = field(init=False)
     base_size: float = field(init=False)
     cached_tides: list = field(init=False, default_factory=list)
@@ -106,7 +105,6 @@ class Simulations:
         self.load_config(config_path)
         self.wdir = self.config.workspace.path
         self.cache_path = self.config.cache.path
-        self.results_path = self.wdir / "results"
         self.base_path = self.config.tides.path
 
         self.setup_workspace()
@@ -153,9 +151,9 @@ class Simulations:
                     self.logger.add(**handler.config, format=formatter)
 
     def setup_workspace(self):
-        if self.config.workspace.overwrite and self.results_path.exists():
-            shutil.rmtree(self.results_path)
-        self.results_path.mkdir(exist_ok=True)
+        if self.config.workspace.overwrite and self.wdir.exists():
+            shutil.rmtree(self.wdir)
+        self.wdir.mkdir(exist_ok=True)
         if self.config.cache.rebuild and self.cache_path.exists():
             shutil.rmtree(self.cache_path)
         self.cache_path.mkdir(exist_ok=True)
@@ -206,10 +204,14 @@ class Simulations:
         def callback(result):
             self.pbar.update()
 
+        freeze_support()
+        tqdm.set_lock(RLock())
+
         self.logger.info(f"Building cache for {len(self.tide_params)} different tides.")
         results = []
-        self.pbar = tqdm(desc="TIDES", total=len(self.tide_params), leave=True, unit="tide")
-        pool = mp.Pool(processes=self.n_cores, initializer=init)
+        self.pbar = tqdm(desc="TIDES", total=len(self.tide_params), leave=False, unit="tide", dynamic_ncols=True, position=0)
+        # pool = mp.Pool(processes=self.n_cores, initializer=init)
+        pool = mp.Pool(processes=self.n_cores, initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),))
         for params in self.tide_params:
             kwds = {"cache_dir": self.cache_path, **params}
             results.append(pool.apply_async(func=cache_tide, kwds=kwds, callback=callback))
@@ -223,7 +225,7 @@ class Simulations:
         self.metadata = [{**d[0], **d[1]} for d in it.product(self.tide_params, self.platform_params)]
         self.metadata = pd.DataFrame.from_records(self.metadata).drop(columns=["ssc"])
         self.metadata.index.name = "id"
-        self.metadata.to_csv(self.results_path / "_metadata.csv")
+        self.metadata.to_csv(self.wdir / "_metadata.csv")
 
     def setup(self):
         self.build_base()
@@ -236,10 +238,14 @@ class Simulations:
         def callback(result):
             self.pbar.update()
 
+        freeze_support()
+        tqdm.set_lock(RLock())
+
         results = []
         id = 0
-        self.pbar = tqdm(desc="MAIN", total=self.n, leave=True, unit="run")
-        pool = mp.Pool(processes=self.n_cores, initializer=init)
+        self.pbar = tqdm(desc="MAIN", total=self.n, leave=True, smoothing=0, unit="run", dynamic_ncols=True, position=0)
+        # pool = mp.Pool(processes=self.n_cores, initializer=init)
+        pool = mp.Pool(processes=self.n_cores, initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),))
         for tide in self.cached_tides:
             for p in self.platform_params:
                 params = Bunch(**{k: v for k, v in p.items() if "ssc" not in k})
@@ -247,7 +253,7 @@ class Simulations:
                 kwds = {"tide": tide, "wdir": self.wdir, "id": id, **params}
                 results.append(pool.apply_async(func=simulate, kwds=kwds, callback=callback))
                 id += 1
-                time.sleep(1)
+                time.sleep(0.3)
         pool.close()
         pool.join()
         self.pbar.close()

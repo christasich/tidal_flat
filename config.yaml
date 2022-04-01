@@ -1,10 +1,10 @@
 workspace:
   overwrite: True
-  path: .
+  path: ./results
 
 cache:
   rebuild: False
-  path: .cache/
+  path: .data/.cache/
 
 parallel:
   enabled: True
