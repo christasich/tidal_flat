@@ -4,11 +4,11 @@ workspace:
 
 cache:
   rebuild: False
-  path: .data/.cache/
+  path: ./data/.cache/
 
 parallel:
   enabled: True
-  max_cores: 70
+  max_cores: 72
 
 logging:
   enabled: True
@@ -27,7 +27,7 @@ logging:
         mode: w
         backtrace: True
         diagnose: True
-        serialize: False
+        serialize: True
 
 tides:
   path: ./data/processed/tides_2020-2120.pickle

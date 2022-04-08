@@ -10,7 +10,6 @@ from tqdm.auto import tqdm
 from . import constants
 from . import utils
 from .inundation import Inundation
-from datetime import datetime
 
 
 @dataclass
@@ -28,6 +27,7 @@ class Model:
     subsidence_rate: float = 0.0
     # diagnositic
     id: int = 0
+    position: int = 0
     keep_inundations: bool = field(repr=False, default=False)
 
     # auto initialize these fields
@@ -35,7 +35,8 @@ class Model:
     degradation_total: float = field(init=False, default=0.0)
     overextraction: float = field(init=False, default=0.0)
     inundations: list = field(init=False, default_factory=list)
-    results: list | pd.DataFrame = field(init=False, default_factory=list)
+    invalid_inundation: list = field(init=False, default_factory=list)
+    results: pd.DataFrame = field(init=False, default_factory=list)
     start: pd.Timestamp = field(init=False)
     end: pd.Timestamp = field(init=False)
     now: pd.Timestamp = field(init=False)
@@ -53,14 +54,14 @@ class Model:
         self.period = self.water_levels.index[-1] - self.water_levels.index[0]
         self.timestep = pd.Timedelta(self.water_levels.index.freq)
         self.logger = logger.patch(lambda record: record["extra"].update(model_time=self.now))
-        self.update(index=self.start, elevation=initial_elevation)
+        self.update(index=self.start, water_level=np.nan, elevation=initial_elevation)
         self.pbar = tqdm(
-            desc=f"{self.id:04}",
+            desc=f"W{self.position:02}:{self.id:04}",
             total=self.period.ceil("D").days,
             leave=False,
             unit="Day",
             dynamic_ncols=True,
-            position=self.id + 1,
+            position=self.position,
             postfix={"Date": self.now.strftime("%Y-%m-%d"), "Elevation": self.elevation},
         )
         self.water_levels = self.water_levels.rename("water_level")
@@ -87,7 +88,7 @@ class Model:
             self.logger.debug(f"Tide starts above platform. Skipping first inundation.")
             elevation = self.calculate_elevation(to=self.end)
             i = (elevation > self.water_levels).argmax()
-            self.update(index=self.water_levels.index[i], elevation=elevation[i])
+            self.update(index=self.water_levels.index[i], water_level=self.water_levels.index[i], elevation=elevation[i])
 
     @property
     def constant_rates(self) -> float:
@@ -115,12 +116,13 @@ class Model:
             return (self.constant_rates * elapsed_seconds).values + self.elevation
 
     def validate_inundation(self, inundation: Inundation) -> None:
+        save = False
         if inundation.result.success is False:
-            self.logger.warning(f"Integration failed! {inundation.result.message}")
+            self.logger.warning(f"Integration failed with message: {inundation.result.message}")
+            save = True
         if (inundation.data.aggradation < 0.0).any():
-            self.logger.warning(
-                f"Solution has negative aggradations! {inundation.data.loc[inundation.data.aggradation < 0]}"
-            )
+            self.logger.warning("Solution contains negative aggradations.")
+            save = True
         if (inundation.data.aggradation_max < inundation.data.aggradation).any():
             overextraction = inundation.data.aggradation.values[-1] - inundation.data.aggradation_max.values[-1]
             self.overextraction += overextraction
@@ -129,10 +131,12 @@ class Model:
                 f"Solution results in overextraction! Amount: {inundation.overextraction:.2e} m, Percent:"
                 f" {over_frac:.2%} Total: {self.overextraction:.2e} m"
             )
+        if save:
+            self.invalid_inundation.append(inundation)
 
-    def update(self, index: pd.Timestamp, elevation: float) -> None:
-        self.logger.trace(f"Updating results - Date: {index}, Elevation={elevation}")
-        self.results.append({"index": index, "elevation": elevation})
+    def update(self, index: pd.Timestamp, water_level: float, elevation: float) -> None:
+        self.logger.trace(f"Updating results: Date={index}, Water Level={water_level}, Elevation={elevation}")
+        self.results.append({"index": index, "water_level": water_level, "elevation": elevation})
         self.now = index
         self.elevation = elevation
 
@@ -172,16 +176,24 @@ class Model:
                 settling_rate=self.settling_rate,
                 constant_rates=self.constant_rates,
             )
+            self.validate_inundation(inundation)
             if self.keep_inundations:
                 self.inundations.append(inundation)
 
-            self.update(index=inundation.start, elevation=inundation.initial_elevation)
-            self.validate_inundation(inundation=inundation)
-            self.update(index=inundation.data.index[-1], elevation=inundation.data.elevation.iat[-1])
+            for record in inundation.data[['water_level', 'elevation']].reset_index().to_dict(orient='records'):
+                self.update(index=record['index'], water_level=record['water_level'], elevation=record['elevation'])
         else:
-            self.logger.debug(f"All inundations processed.")
+            self.logger.trace("No inunundations remaining.")
             elevation = self.calculate_elevation(at=self.end)
-            self.update(index=self.end, elevation=elevation)
+            self.update(index=self.end, water_level=np.nan, elevation=elevation)
+
+    def uninitialize(self) -> None:
+        self.results = pd.DataFrame.from_records(data=self.results, index="index").squeeze()
+        self.pbar.close()
+        oe_per_year = self.overextraction / self.period.days / 365.25
+        if oe_per_year > 0.005:
+            logger.warning(f"Model overextraction > 5 mm/yr. Total: {oe_per_year * 1000:.2f} mm.")
+        self.logger.info('Simulation completed. Exiting.')
 
     def run(self, stop=None, steps=None) -> None:
         if stop is None:
@@ -194,9 +206,7 @@ class Model:
             new_n = (self.now - self.start).ceil("D").days
             self.pbar.set_postfix({"Date": self.now.strftime("%Y-%m-%d"), "Elevation": self.elevation}, refresh=False)
             self.pbar.update(n=new_n - self.pbar.n)
-        if self.now == self.end:
-            self.results = pd.DataFrame.from_records(data=self.results, index="index").squeeze()
-            self.pbar.close()
+        self.uninitialize()
 
     def plot_results(self, freq="10T") -> None:
 
