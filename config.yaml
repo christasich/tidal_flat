@@ -1,5 +1,5 @@
 workspace:
-  overwrite: True
+  overwrite: False
   path: ./results
 
 cache:
@@ -32,7 +32,7 @@ logging:
 tides:
   path: ./data/processed/tides_2020-2120.pickle
   slr:
-    z2100: [0.3, 0.7, 1.1]
+    z2100: [0.3, 1.1]
     b: 0.003
   amp:
     beta: [0.0015, 0.0075, 0.0]

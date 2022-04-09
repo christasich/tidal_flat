@@ -60,6 +60,8 @@ class Inundation:
         water_level = y[0]
         concentration = y[1]
         elevation = y[2]
+        # tt = pd.to_datetime(t, unit='s')
+        # print(f'time={tt:%Y-%m-%d %H:%M:%S}, water_level={water_level:.4f}, concentration={concentration:.2e}, elevation={elevation:.4f}, depth={water_level-elevation:.4f}')
         depth = water_level - elevation
 
         d1dt_water_level = params.tides_func.derivative()(t)
@@ -87,7 +89,7 @@ class Inundation:
         ]  # 0  # 1  # 2  # 3  # 4
 
     def zero_conc(t, y, params):
-        return y[1]  # - 1e-5
+        return y[1] - 1e-8
 
     zero_conc.terminal = True
     zero_conc.direction = -1
@@ -95,7 +97,7 @@ class Inundation:
     zero_conc = staticmethod(zero_conc)
 
     def zero_depth(t, y, params):
-        return y[0] - y[2]  # - 1e-5
+        return y[0] - y[2] - 1e-8
 
     zero_depth.terminal = True
     zero_depth.direction = -1

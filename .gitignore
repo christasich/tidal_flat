@@ -173,6 +173,7 @@ cython_debug/
 
 # Results
 results/
+bak/
 
 # Temp data
 .cache/

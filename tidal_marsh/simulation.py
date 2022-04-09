@@ -78,10 +78,11 @@ def simulate(
         save_path = wdir / "data"
         save_path.mkdir(exist_ok=True)
         model.results.to_csv(save_path / f"{id:04}.csv")
-        if len(model.invalid_inundation) > 0:
+        if len(model.invalid_inundations) > 0:
             invalid_path = wdir / 'data' / 'invalid'
             invalid_path.mkdir(exist_ok=True)
-            for i in model.invalid_inundation:
+            for i in model.invalid_inundations:
+                del i.logger
                 name = f'{id:04}_{i.start:%Y-%m-%d}.pickle'
                 with open(invalid_path / name, 'wb') as f:
                     pickle.dump(i, f, pickle.HIGHEST_PROTOCOL)
@@ -240,7 +241,12 @@ class Simulations:
         self.configure_parallel(mem_per_core=self.base_size * 1.1)
 
     @logger.contextualize(id='MAIN')
-    def run(self):
+    def run(self, ids=None):
+        if ids:
+            to_process = self.metadata.loc[self.metadata.index.isin(ids)]
+        else:
+            to_process = self.metadata
+
         def callback(result):
             self.pbar.update()
 
@@ -251,7 +257,7 @@ class Simulations:
         id = 0
         self.pbar = tqdm(desc="RUNNING MODELS", total=self.n, leave=True, smoothing=0, unit="model", dynamic_ncols=True)
         pool = mp.Pool(processes=self.n_cores, initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),))
-        for row in self.metadata.itertuples():
+        for row in to_process.itertuples():
             filename = f"tides.z2100_{row.z2100}.b_{row.b}.beta_{row.beta}.k_{row.k}.pickle"
             tide = self.cache_path / filename
             kwds = {
@@ -269,14 +275,6 @@ class Simulations:
                 }
             results.append(pool.apply_async(func=simulate, kwds=kwds, callback=callback))
             id += 1
-        # for tide in self.cached_tides:
-        #     for p in self.platform_params:
-        #         params = Bunch(**{k: v for k, v in p.items() if "ssc" not in k})
-        #         params.ssc = p["ssc"] * p["ssc_factor"]
-        #         kwds = {"tide": tide, "wdir": self.wdir, "id": id, **params}
-        #         results.append(pool.apply_async(func=simulate, kwds=kwds, callback=callback))
-        #         id += 1
-                # time.sleep(0.1)
         pool.close()
         pool.join()
         self.pbar.close()

@@ -28,14 +28,14 @@ class Model:
     # diagnositic
     id: int = 0
     position: int = 0
-    keep_inundations: bool = field(repr=False, default=False)
+    save_inundations: bool = field(repr=False, default=False)
 
     # auto initialize these fields
     aggradation_total: float = field(init=False, default=0.0)
     degradation_total: float = field(init=False, default=0.0)
     overextraction: float = field(init=False, default=0.0)
     inundations: list = field(init=False, default_factory=list)
-    invalid_inundation: list = field(init=False, default_factory=list)
+    invalid_inundations: list = field(init=False, default_factory=list)
     results: pd.DataFrame = field(init=False, default_factory=list)
     start: pd.Timestamp = field(init=False)
     end: pd.Timestamp = field(init=False)
@@ -132,7 +132,7 @@ class Model:
                 f" {over_frac:.2%} Total: {self.overextraction:.2e} m"
             )
         if save:
-            self.invalid_inundation.append(inundation)
+            self.invalid_inundations.append(inundation)
 
     def update(self, index: pd.Timestamp, water_level: float, elevation: float) -> None:
         self.logger.trace(f"Updating results: Date={index}, Water Level={water_level}, Elevation={elevation}")
@@ -177,7 +177,7 @@ class Model:
                 constant_rates=self.constant_rates,
             )
             self.validate_inundation(inundation)
-            if self.keep_inundations:
+            if self.save_inundations:
                 self.inundations.append(inundation)
 
             for record in inundation.data[['water_level', 'elevation']].reset_index().to_dict(orient='records'):
