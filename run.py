@@ -10,6 +10,9 @@ if __name__ == '__main__':
 
     sim = tm.simulation.Simulations(config_path=args.config)
 
+    if not args.start:
+        args.start = sim.metadata.index[0]
+
     if not args.end:
         args.end = sim.metadata.index[-1]
 
