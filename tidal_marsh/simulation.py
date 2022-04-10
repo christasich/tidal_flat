@@ -10,6 +10,7 @@ from pathlib import Path
 import csv
 from sklearn.utils import Bunch
 from dataclasses import InitVar, dataclass, field
+import socket
 
 import numpy as np
 import pandas as pd
@@ -24,6 +25,8 @@ from . import tides
 from . import utils
 from .core import Model
 from .tides import Tides, load_tides
+
+hostname = socket.gethostname()
 
 position = mp.Value('i', 0)
 pos = None
@@ -101,12 +104,11 @@ class Simulations:
     n_cores: int = 1
     tide_params: Bunch = field(init=False)
     platform_params: Bunch = field(init=False)
-    n: int = field(init=False)
     metadata: pd.DataFrame = field(init=False)
     pbar: tqdm = field(init=False, repr=False)
     results: list = field(init=False, default_factory=list)
 
-    @logger.contextualize(id='MAIN')
+    @logger.contextualize(id='MAIN', server=hostname)
     def __post_init__(self, config_path):
         self.load_config(config_path)
         self.wdir = self.config.workspace.path
@@ -117,6 +119,7 @@ class Simulations:
         self.configure_logging()
         self.reshape_ssc()
         self.make_combos()
+        self.write_metadata()
 
     def load_config(self, path):
         def hook(d):
@@ -174,10 +177,9 @@ class Simulations:
     def make_combos(self):
         self.tide_params = utils.make_combos(**self.config.tides.slr, **self.config.tides.amp)
         self.platform_params = utils.make_combos(**self.config.platform)
-        self.n = len(self.tide_params) * len(self.platform_params)
         logger.info(
             f"Made combination of parameters for a {len(self.tide_params)} different tides and"
-            f" {len(self.platform_params)} different platforms for a total of {self.n} runs."
+            f" {len(self.platform_params)} different platforms for a total of {len(self.tide_params) * len(self.platform_params)} runs."
         )
 
     def configure_parallel(self, mem_per_core):
@@ -232,15 +234,14 @@ class Simulations:
         self.metadata.index.name = "id"
         self.metadata.to_csv(self.wdir / "metadata.csv")
 
-    @logger.contextualize(id='MAIN')
+    @logger.contextualize(id='MAIN', server=hostname)
     def setup(self):
         self.build_base()
         self.configure_parallel(mem_per_core=self.base_size * 7)
         self.build_cache()
-        self.write_metadata()
         self.configure_parallel(mem_per_core=self.base_size * 1.1)
 
-    @logger.contextualize(id='MAIN')
+    @logger.contextualize(id='MAIN', server=hostname)
     def run(self, ids=None):
         if ids:
             to_process = self.metadata.loc[self.metadata.index.isin(ids)]
@@ -255,7 +256,7 @@ class Simulations:
 
         results = []
         id = 0
-        self.pbar = tqdm(desc="RUNNING MODELS", total=self.n, leave=True, smoothing=0, unit="model", dynamic_ncols=True)
+        self.pbar = tqdm(desc="RUNNING MODELS", total=len(to_process), leave=True, smoothing=0, unit="model", dynamic_ncols=True)
         pool = mp.Pool(processes=self.n_cores, initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),))
         for row in to_process.itertuples():
             filename = f"tides.z2100_{row.z2100}.b_{row.b}.beta_{row.beta}.k_{row.k}.pickle"
