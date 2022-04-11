@@ -9,13 +9,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     sim = tm.simulation.Simulations(config_path=args.config)
+    sim.setup()
+    sim.prepare_cache()
 
     if not args.start:
         args.start = sim.metadata.index[0]
-
     if not args.end:
         args.end = sim.metadata.index[-1]
 
-    ids = range(args.start, args.end+1)
-    sim.setup()
-    sim.run(ids=ids)
+    sim.run(param_df=sim.metadata.loc[args.start:args.end])

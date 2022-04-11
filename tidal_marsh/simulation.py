@@ -35,14 +35,20 @@ def cache_tide(cache_dir, z2100, b, beta, k):
     filename = f"tides.z2100_{z2100}.b_{b}.beta_{beta}.k_{k}.pickle"
     path = cache_dir / filename
     if path.exists():
-        logger.info(f"Skipping. {filename} already in cache.")
+        logger.trace(f"Skipping. {filename} already in cache.")
         return
     with open(cache_dir / "base.pickle", "rb") as file:
         base = pickle.load(file)
     water_levels = base.data.elevation + base.calc_slr(z2100=z2100, b=b) + base.calc_amplification(beta=beta, k=k)
     water_levels.to_frame(name="elvevation").squeeze().to_pickle(path)
-    logger.info(f"Done. {filename} cached successfully.")
+    logger.debug(f"Done. {filename} cached successfully.")
 
+# def reshape_ssc(self):
+#     ssc = pd.DataFrame.from_records(self.config.platform.ssc, index="month").reindex(np.arange(1, 13, 1))
+#     ssc = pd.concat([ssc] * 2).reset_index().interpolate(method="cubicspline")
+#     ssc = ssc.loc[5 : 5 + 11].set_index("month").squeeze().sort_index()
+#     self.config.platform.ssc = ssc
+#     logger.info("Reshaped and interpolated SSC to monthly frequency.")
 
 def simulate(
     tide,
@@ -111,15 +117,6 @@ class Simulations:
     @logger.contextualize(id='MAIN', server=hostname)
     def __post_init__(self, config_path):
         self.load_config(config_path)
-        self.wdir = self.config.workspace.path
-        self.cache_path = self.config.cache.path
-        self.base_path = self.config.tides.path
-
-        self.setup_workspace()
-        self.configure_logging()
-        self.reshape_ssc()
-        self.make_combos()
-        self.write_metadata()
 
     def load_config(self, path):
         def hook(d):
@@ -129,7 +126,13 @@ class Simulations:
             path = yaml.safe_load(file)
             dump = json.dumps(path)
 
-        self.config = json.loads(dump, object_hook=hook)
+        config = json.loads(dump, object_hook=hook)
+
+        ssc = pd.DataFrame.from_records(config.platform.ssc, index="month").reindex(np.arange(1, 13, 1))
+        ssc = pd.concat([ssc] * 2).reset_index().interpolate(method="cubicspline")
+        ssc = ssc.loc[5 : 5 + 11].set_index("month").squeeze().sort_index()
+        config.platform.ssc = ssc
+        self.config = config
 
     def configure_logging(self):
         if self.config.logging.enabled:
@@ -160,19 +163,12 @@ class Simulations:
                         logger.add(**handler.config)
 
     def setup_workspace(self):
-        if self.config.workspace.overwrite and self.wdir.exists():
-            shutil.rmtree(self.wdir)
-        self.wdir.mkdir(exist_ok=True)
+        if self.config.workspace.overwrite:
+            shutil.rmtree(self.config.workspace.path)
+        self.wdir.mkdir(exist_ok=True, parents=True)
         if self.config.cache.rebuild and self.cache_path.exists():
             shutil.rmtree(self.cache_path)
         self.cache_path.mkdir(exist_ok=True)
-
-    def reshape_ssc(self):
-        ssc = pd.DataFrame.from_records(self.config.platform.ssc, index="month").reindex(np.arange(1, 13, 1))
-        ssc = pd.concat([ssc] * 2).reset_index().interpolate(method="cubicspline")
-        ssc = ssc.loc[5 : 5 + 11].set_index("month").squeeze().sort_index()
-        self.config.platform.ssc = ssc
-        logger.info("Reshaped and interpolated SSC to monthly frequency.")
 
     def make_combos(self):
         self.tide_params = utils.make_combos(**self.config.tides.slr, **self.config.tides.amp)
@@ -188,9 +184,9 @@ class Simulations:
         available_mem = psutil.virtual_memory().available
         logger.info(f"RAM - Available: {available_mem / 1024 ** 3:.2f} GB, Used: {used_mem / 1024 ** 3:.2f} GB")
         max_cores = available_mem / mem_per_core
-        self.n_cores = int(min(self.config.parallel.max_cores, max_cores))
+        self.n_cores = int(min(self.config.parallel.max_cores, max_cores, mp.cpu_count()))
         logger.info(
-            f"Max workers set to {self.n_cores} using ~{self.n_cores * mem_per_core / 1024 ** 3:.2f} GB total."
+            f"Max workers set to {self.n_cores}. Expected memory usage per core: ~{self.n_cores * mem_per_core / 1024 ** 3:.2f} GB"
         )
 
     def build_base(self):
@@ -232,22 +228,31 @@ class Simulations:
         self.metadata = [{**d[0], **d[1]} for d in it.product(self.tide_params, self.platform_params)]
         self.metadata = pd.DataFrame.from_records(self.metadata).drop(columns=["ssc"])
         self.metadata.index.name = "id"
+        self.metadata['tide'] = self.metadata.apply(lambda row: self.cache_path / f"tides.z2100_{row.z2100}.b_{row.b}.beta_{row.beta}.k_{row.k}.pickle", axis=1)
+        self.metadata['result'] = [self.wdir / 'data' / f'{i:04}.csv' for i in self.metadata.index]
         self.metadata.to_csv(self.wdir / "metadata.csv")
 
     @logger.contextualize(id='MAIN', server=hostname)
     def setup(self):
+        self.wdir = self.config.workspace.path / time.strftime("%Y-%m-%d_%H.%M.%S")
+        self.cache_path = self.config.cache.path
+        self.base_path = self.config.tides.path
+        self.setup_workspace()
+        self.configure_logging()
+        self.make_combos()
+        self.write_metadata()
+
+    @logger.contextualize(id='MAIN', server=hostname)
+    def prepare_cache(self):
         self.build_base()
         self.configure_parallel(mem_per_core=self.base_size * 7)
         self.build_cache()
         self.configure_parallel(mem_per_core=self.base_size * 1.1)
 
     @logger.contextualize(id='MAIN', server=hostname)
-    def run(self, ids=None):
-        if ids:
-            to_process = self.metadata.loc[self.metadata.index.isin(ids)]
-        else:
-            to_process = self.metadata
-
+    def run(self, param_df=None):
+        if not param_df:
+            param_df = self.metadata
         def callback(result):
             self.pbar.update()
 
@@ -256,13 +261,11 @@ class Simulations:
 
         results = []
         id = 0
-        self.pbar = tqdm(desc="RUNNING MODELS", total=len(to_process), leave=True, smoothing=0, unit="model", dynamic_ncols=True)
+        self.pbar = tqdm(desc="RUNNING MODELS", total=len(param_df), leave=True, smoothing=0, unit="model", dynamic_ncols=True)
         pool = mp.Pool(processes=self.n_cores, initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),))
-        for row in to_process.itertuples():
-            filename = f"tides.z2100_{row.z2100}.b_{row.b}.beta_{row.beta}.k_{row.k}.pickle"
-            tide = self.cache_path / filename
+        for row in param_df.itertuples():
             kwds = {
-                "tide": tide,
+                "tide": row.tide,
                 "wdir": self.wdir,
                 "id": row.Index,
                 "initial_elevation": row.initial_elevation,

@@ -1,10 +1,10 @@
 workspace:
-  overwrite: True
   path: ./results
+  overwrite: False
 
 cache:
-  rebuild: False
   path: ./data/.cache/
+  rebuild: False
 
 parallel:
   enabled: True
@@ -23,7 +23,7 @@ logging:
     - type: file
       enabled: True
       config:
-        level: TRACE
+        level: DEBUG
         mode: w
         backtrace: True
         diagnose: True

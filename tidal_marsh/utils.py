@@ -28,7 +28,7 @@ def make_combos(**kwargs):
     for each possible combination of kwargs.
     """
     for key, value in kwargs.items():
-        if isinstance(value, (list, tuple, np.ndarray)) is False:
+        if isinstance(value, (list, tuple)) is False:
             kwargs.update({key: [value]})
     keys, values = zip(*kwargs.items())
     combos = [i for i in it.product(*values)]
