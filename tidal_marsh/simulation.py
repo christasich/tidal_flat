@@ -251,7 +251,7 @@ class Simulations:
 
     @logger.contextualize(id='MAIN', server=hostname)
     def run(self, param_df=None):
-        if not param_df:
+        if param_df is None:
             param_df = self.metadata
         def callback(result):
             self.pbar.update()
