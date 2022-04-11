@@ -89,7 +89,7 @@ class Inundation:
         ]  # 0  # 1  # 2  # 3  # 4
 
     def zero_conc(t, y, params):
-        return y[1] - 1e-8
+        return y[1] #- 1e-8
 
     zero_conc.terminal = True
     zero_conc.direction = -1
@@ -97,7 +97,7 @@ class Inundation:
     zero_conc = staticmethod(zero_conc)
 
     def zero_depth(t, y, params):
-        return y[0] - y[2] - 1e-8
+        return y[0] - y[2] #- 1e-8
 
     zero_depth.terminal = True
     zero_depth.direction = -1
