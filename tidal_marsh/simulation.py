@@ -228,7 +228,7 @@ class Simulations:
         self.metadata = [{**d[0], **d[1]} for d in it.product(self.tide_params, self.platform_params)]
         self.metadata = pd.DataFrame.from_records(self.metadata).drop(columns=["ssc"])
         self.metadata.index.name = "id"
-        self.metadata['tide'] = self.metadata.apply(lambda row: self.cache_path / f"tides.z2100_{row.z2100}.b_{row.b}.beta_{row.beta}.k_{row.k}.pickle", axis=1)
+        self.metadata['tide'] = self.metadata.apply(lambda row: self.cache_path / f"tides.z2100_{row.z2100}.b_{row.b}.beta_{row.beta}.k_{row.k:.0f}.pickle", axis=1)
         self.metadata['result'] = [self.wdir / 'data' / f'{i:04}.csv' for i in self.metadata.index]
         self.metadata.to_csv(self.wdir / "metadata.csv")
 
