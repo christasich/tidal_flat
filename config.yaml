@@ -50,3 +50,4 @@ platform:
   organic_rate: 2.0e-4
   compaction_rate: -4.0e-3
   subsidence_rate: -3.0e-3
+  integration_method: ['RK23', 'RK45', 'DOP853', 'Radau', 'BDF', 'LSODA']

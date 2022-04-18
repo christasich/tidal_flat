@@ -39,7 +39,10 @@ def cache_tide(cache_dir, z2100, b, beta, k):
         return
     with open(cache_dir / "base.pickle", "rb") as file:
         base = pickle.load(file)
-    water_levels = base.data.elevation + base.calc_slr(z2100=z2100, b=b) + base.calc_amplification(beta=beta, k=k)
+    if beta == 0.0 and np.isnan(k):
+        water_levels = base.data.elevation + base.calc_slr(z2100=z2100, b=b)
+    else:
+        water_levels = base.data.elevation + base.calc_slr(z2100=z2100, b=b) + base.calc_amplification(beta=beta, k=k)
     water_levels.to_frame(name="elvevation").squeeze().to_pickle(path)
     logger.debug(f"Done. {filename} cached successfully.")
 
@@ -62,6 +65,7 @@ def simulate(
     organic_rate,
     compaction_rate,
     subsidence_rate,
+    integration_method,
 ):
     global pos
     if not pos:
@@ -80,6 +84,7 @@ def simulate(
             organic_rate=organic_rate,
             compaction_rate=compaction_rate,
             subsidence_rate=subsidence_rate,
+            integration_method=integration_method,
             id=id,
             position=pos,
         )
@@ -128,6 +133,8 @@ class Simulations:
 
         config = json.loads(dump, object_hook=hook)
 
+        config.parallel.max_cores = min(config.parallel.max_cores, mp.cpu_count())
+
         ssc = pd.DataFrame.from_records(config.platform.ssc, index="month").reindex(np.arange(1, 13, 1))
         ssc = pd.concat([ssc] * 2).reset_index().interpolate(method="cubicspline")
         ssc = ssc.loc[5 : 5 + 11].set_index("month").squeeze().sort_index()
@@ -172,19 +179,22 @@ class Simulations:
 
     def make_combos(self):
         self.tide_params = utils.make_combos(**self.config.tides.slr, **self.config.tides.amp)
+        if 0 in self.config.tides.amp['beta']:
+            self.tide_params = [d for d in self.tide_params if d['beta'] != 0]
+            self.tide_params = self.tide_params + utils.make_combos(**self.config.tides.slr, **{'beta': [0.0], 'k': [np.nan]})
         self.platform_params = utils.make_combos(**self.config.platform)
         logger.info(
             f"Made combination of parameters for a {len(self.tide_params)} different tides and"
             f" {len(self.platform_params)} different platforms for a total of {len(self.tide_params) * len(self.platform_params)} runs."
         )
 
-    def configure_parallel(self, mem_per_core):
+    def configure_parallel(self, mem_per_core, n_jobs=np.nan):
         logger.info(f"Allocating {mem_per_core / 1024 ** 3:.2f} GB of RAM per core.")
         used_mem = psutil.Process(os.getpid()).memory_info().rss
         available_mem = psutil.virtual_memory().available
         logger.info(f"RAM - Available: {available_mem / 1024 ** 3:.2f} GB, Used: {used_mem / 1024 ** 3:.2f} GB")
         max_cores = available_mem / mem_per_core
-        self.n_cores = int(min(self.config.parallel.max_cores, max_cores, mp.cpu_count()))
+        self.n_cores = int(min(self.config.parallel.max_cores, max_cores, n_jobs))
         logger.info(
             f"Max workers set to {self.n_cores}. Expected memory usage per core: ~{self.n_cores * mem_per_core / 1024 ** 3:.2f} GB"
         )
@@ -211,6 +221,7 @@ class Simulations:
         freeze_support()
         tqdm.set_lock(RLock())
 
+        self.configure_parallel(mem_per_core=self.base_size * 7, n_jobs=len(self.tide_params))
         logger.info(f"Building cache for {len(self.tide_params)} different tides.")
         results = []
         self.pbar = tqdm(desc="PREPARING TIDES", total=len(self.tide_params), leave=True, unit="tide", dynamic_ncols=True)
@@ -228,8 +239,8 @@ class Simulations:
         self.metadata = [{**d[0], **d[1]} for d in it.product(self.tide_params, self.platform_params)]
         self.metadata = pd.DataFrame.from_records(self.metadata).drop(columns=["ssc"])
         self.metadata.index.name = "id"
-        self.metadata['tide'] = self.metadata.apply(lambda row: self.cache_path / f"tides.z2100_{row.z2100}.b_{row.b}.beta_{row.beta}.k_{row.k:.0f}.pickle", axis=1)
-        self.metadata['result'] = [self.wdir / 'data' / f'{i:04}.csv' for i in self.metadata.index]
+        self.metadata['tide'] = self.metadata.apply(lambda row: (self.cache_path / f"tides.z2100_{row.z2100}.b_{row.b}.beta_{row.beta}.k_{row.k:.0f}.pickle").as_posix(), axis=1)
+        self.metadata['result'] = [(self.wdir / 'data' / f'{i:04}.csv').as_posix() for i in self.metadata.index]
         self.metadata.to_csv(self.wdir / "metadata.csv")
 
     @logger.contextualize(id='MAIN', server=hostname)
@@ -245,24 +256,28 @@ class Simulations:
     @logger.contextualize(id='MAIN', server=hostname)
     def prepare_cache(self):
         self.build_base()
-        self.configure_parallel(mem_per_core=self.base_size * 7)
         self.build_cache()
-        self.configure_parallel(mem_per_core=self.base_size * 1.1)
 
     @logger.contextualize(id='MAIN', server=hostname)
     def run(self, param_df=None):
         if param_df is None:
             param_df = self.metadata
+
+        def init(lock):
+            tqdm.set_lock(lock)
+            tqdm.write('')
+
         def callback(result):
             self.pbar.update()
 
         freeze_support()
         tqdm.set_lock(RLock())
 
+        self.configure_parallel(mem_per_core=self.base_size * 1.1, n_jobs=len(param_df))
         results = []
         id = 0
         self.pbar = tqdm(desc="RUNNING MODELS", total=len(param_df), leave=True, smoothing=0, unit="model", dynamic_ncols=True)
-        pool = mp.Pool(processes=self.n_cores, initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),))
+        pool = mp.Pool(processes=self.n_cores, initializer=init, initargs=(tqdm.get_lock(),))
         for row in param_df.itertuples():
             kwds = {
                 "tide": row.tide,
@@ -276,6 +291,7 @@ class Simulations:
                 "organic_rate": row.organic_rate,
                 "compaction_rate": row.compaction_rate,
                 "subsidence_rate": row.subsidence_rate,
+                "integration_method": row.integration_method,
                 }
             results.append(pool.apply_async(func=simulate, kwds=kwds, callback=callback))
             id += 1

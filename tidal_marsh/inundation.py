@@ -1,4 +1,5 @@
 from dataclasses import InitVar, dataclass, field
+import numpy as np
 
 import pandas as pd
 import seaborn as sns
@@ -27,6 +28,7 @@ class Inundation:
     data: pd.DataFrame = field(init=False)
     aggradation_total: float = 0.0
     degradation_total: float = 0.0
+    integration_method: str = "RK45"
 
     def __post_init__(self, ssc_boundary, bulk_density, settling_rate, constant_rates):
         self.start = self.water_levels.index[0]
@@ -53,40 +55,66 @@ class Inundation:
             constant_rates=constant_rates,
         )
         self.overextraction = 0.0
-        self.integrate()
 
-    @staticmethod
-    def solve_odes(t, y, params):
-        water_level = y[0]
-        concentration = y[1]
-        elevation = y[2]
-        # tt = pd.to_datetime(t, unit='s')
-        # print(f'time={tt:%Y-%m-%d %H:%M:%S}, water_level={water_level:.4f}, concentration={concentration:.2e}, elevation={elevation:.4f}, depth={water_level-elevation:.4f}')
-        depth = water_level - elevation
+    # def zero_conc(t, y, params):
+    #     return y[0] #- 1e-8
 
-        d1dt_water_level = params.tides_func.derivative()(t)
-        d1dt_aggradation = params.settling_rate * concentration / params.bulk_density
-        d1dt_degradation = params.constant_rates
-        d1dt_elevation = d1dt_aggradation + d1dt_degradation
-        d1dt_depth = d1dt_water_level - d1dt_elevation
-        if d1dt_depth > 0:
-            d1dt_concentration = (
-                -(params.settling_rate * concentration) / depth
-                - 1 / depth * (concentration - params.ssc_boundary) * d1dt_depth
-            )
-            d1dt_aggradation_max = params.ssc_boundary * d1dt_depth / params.bulk_density
-        else:
-            d1dt_concentration = -(params.settling_rate * concentration) / depth
-            d1dt_aggradation_max = 0.0
+    # zero_conc.terminal = True
+    # zero_conc.direction = -1
 
-        return [
-            d1dt_water_level,
-            d1dt_concentration,
-            d1dt_elevation,
-            d1dt_aggradation,
-            d1dt_aggradation_max,
-            d1dt_degradation,
-        ]  # 0  # 1  # 2  # 3  # 4
+    # zero_conc = staticmethod(zero_conc)
+
+    # def zero_depth(t, y, params):
+    #     return params.tides_func(t) - y[1] #- 1e-8
+
+    # zero_depth.terminal = True
+    # zero_depth.direction = -1
+
+    # zero_depth = staticmethod(zero_depth)
+
+    # @staticmethod
+    # def solve_odes(t, y, params):
+    #     concentration = y[0]
+    #     elevation = y[1]
+    #     depth = params.tides_func(t) - elevation
+
+    #     d1dt_water_level = params.tides_func.derivative()(t)
+    #     d1dt_aggradation = params.settling_rate * concentration / params.bulk_density
+    #     d1dt_degradation = params.constant_rates
+    #     d1dt_elevation = d1dt_aggradation + d1dt_degradation
+    #     d1dt_depth = d1dt_water_level - d1dt_elevation
+    #     if d1dt_depth > 0:
+    #         d1dt_concentration = (
+    #             -(params.settling_rate * concentration) / depth
+    #             - 1 / depth * (concentration - params.ssc_boundary) * d1dt_depth
+    #         )
+    #     else:
+    #         d1dt_concentration = -(params.settling_rate * concentration) / depth
+
+    #     # if concentration + d1dt_concentration < 0:
+    #     #     d1dt_concentration = -concentration
+
+    #     return [
+    #         d1dt_concentration,
+    #         d1dt_elevation,
+    #     ]  # 0  # 1  # 2  # 3  # 4
+
+    # def integrate(self, **kwargs):
+
+    #     self.result = solve_ivp(
+    #         fun=self.solve_odes,
+    #         t_span=[utils.datetime2num(self.start), utils.datetime2num(self.end)],
+    #         y0=[0.0, self.initial_elevation],
+    #         method=self.integration_method,
+    #         events=(self.zero_conc, self.zero_depth),
+    #         # events=(self.zero_depth),
+    #         rtol=1e-12,
+    #         atol=1e-12,
+    #         # rtol=(1e-6, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8)
+    #         # atol=(1e-6, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8),
+    #         args=[self.params],
+    #         **kwargs,
+    #     )
 
     def zero_conc(t, y, params):
         return y[1] #- 1e-8
@@ -104,17 +132,55 @@ class Inundation:
 
     zero_depth = staticmethod(zero_depth)
 
-    def integrate(self, method="DOP853", dense_output=False):
+    @staticmethod
+    def solve_odes(t, y, params):
+        water_level = y[0]
+        concentration = y[1]
+        elevation = y[2]
+        depth = water_level - elevation
+
+        d1dt_water_level = params.tides_func.derivative()(t)
+        d1dt_aggradation = params.settling_rate * concentration / params.bulk_density
+        d1dt_degradation = params.constant_rates
+        d1dt_elevation = d1dt_aggradation + d1dt_degradation
+        d1dt_depth = d1dt_water_level - d1dt_elevation
+        if d1dt_depth > 0:
+            d1dt_concentration = (
+                -(params.settling_rate * concentration) / depth
+                - 1 / depth * (concentration - params.ssc_boundary) * d1dt_depth
+            )
+            d1dt_aggradation_max = params.ssc_boundary * d1dt_depth / params.bulk_density
+        else:
+            d1dt_concentration = -(params.settling_rate * concentration) / depth
+            d1dt_aggradation_max = 0.0
+
+        # if concentration + d1dt_concentration < 0:
+        #     d1dt_concentration = -concentration
+
+        return [
+            d1dt_water_level,
+            d1dt_concentration,
+            d1dt_elevation,
+            d1dt_aggradation,
+            d1dt_aggradation_max,
+            d1dt_degradation,
+        ]  # 0  # 1  # 2  # 3  # 4
+
+    def integrate(self, **kwargs):
 
         self.result = solve_ivp(
             fun=self.solve_odes,
             t_span=[utils.datetime2num(self.start), utils.datetime2num(self.end)],
             y0=[self.water_levels.values[0], 0.0, self.initial_elevation, 0.0, 0.0, 0.0],
-            method=method,
+            method=self.integration_method,
             events=(self.zero_conc, self.zero_depth),
-            dense_output=dense_output,
-            atol=(1e-6, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8),
+            # events=(self.zero_depth),
+            # rtol=1e-12,
+            # atol=1e-12,
+            # rtol=(1e-6, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8)
+            # atol=(1e-6, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8),
             args=[self.params],
+            **kwargs,
         )
         self.set()
 
@@ -143,7 +209,7 @@ class Inundation:
             record["water_level"] = self.water_levels.at[self.end]
             remaining_seconds = (self.end - df.index[-1]).total_seconds()
             record["elevation"] = df.elevation.values[-1] + remaining_seconds * self.params.constant_rates
-            record["concentration"] = 0.0
+            record["concentration"] = np.nan
             record["aggradation"] = df.aggradation.values[-1]
             record["aggradation_max"] = df.aggradation_max.values[-1]
             record["degradation"] = df.degradation.values[-1]
@@ -154,7 +220,7 @@ class Inundation:
 
     def plot(self):
 
-        fig, ax = plt.subplots(figsize=(15, 15), nrows=4, ncols=1, constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(10, 10), nrows=4, ncols=1, constrained_layout=True)
         fig.suptitle(f"Inundation at {self.start}", fontsize=16)
 
         aggr_max_mod_diff = self.data.aggradation_max - self.data.aggradation

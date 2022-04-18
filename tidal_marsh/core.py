@@ -25,6 +25,7 @@ class Model:
     organic_rate: float = 0.0
     compaction_rate: float = 0.0
     subsidence_rate: float = 0.0
+    integration_method: str = "RK45"
     # diagnositic
     id: int = 0
     position: int = 0
@@ -175,10 +176,12 @@ class Model:
                 bulk_density=self.bulk_density,
                 settling_rate=self.settling_rate,
                 constant_rates=self.constant_rates,
+                integration_method=self.integration_method,
             )
-            self.validate_inundation(inundation)
             if self.save_inundations:
                 self.inundations.append(inundation)
+            inundation.integrate()
+            self.validate_inundation(inundation)
 
             for record in inundation.data[['water_level', 'elevation']].reset_index().to_dict(orient='records'):
                 self.update(index=record['index'], water_level=record['water_level'], elevation=record['elevation'])
