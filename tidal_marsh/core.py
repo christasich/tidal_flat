@@ -25,7 +25,7 @@ class Model:
     organic_rate: float = 0.0
     compaction_rate: float = 0.0
     subsidence_rate: float = 0.0
-    integration_method: str = "RK45"
+    solve_ivp_opts: dict = field(default_factory=dict)
     # diagnositic
     id: int = 0
     position: int = 0
@@ -36,14 +36,13 @@ class Model:
     degradation_total: float = field(init=False, default=0.0)
     overextraction: float = field(init=False, default=0.0)
     inundations: list = field(init=False, default_factory=list)
-    invalid_inundations: list = field(init=False, default_factory=list)
     results: pd.DataFrame = field(init=False, default_factory=list)
     start: pd.Timestamp = field(init=False)
     end: pd.Timestamp = field(init=False)
     now: pd.Timestamp = field(init=False)
     elevation: float = field(init=False)
-    period: pd.Timedelta = field(init=False)
     timestep: pd.Timedelta = field(init=False)
+    pbar_unit: pd.Timedelta = field(init=False)
 
     def __post_init__(
         self,
@@ -52,19 +51,9 @@ class Model:
     ) -> None:
         self.start = self.now = self.water_levels.index[0]
         self.end = self.water_levels.index[-1]
-        self.period = self.water_levels.index[-1] - self.water_levels.index[0]
         self.timestep = pd.Timedelta(self.water_levels.index.freq)
         self.logger = logger.patch(lambda record: record["extra"].update(model_time=self.now))
-        self.update(index=self.start, water_level=np.nan, elevation=initial_elevation)
-        self.pbar = tqdm(
-            desc=f"W{self.position:02}:{self.id:04}",
-            total=self.period.ceil("D").days,
-            leave=False,
-            unit="Day",
-            dynamic_ncols=True,
-            position=self.position,
-            postfix={"Date": self.now.strftime("%Y-%m-%d"), "Elevation": self.elevation},
-        )
+        self.update(index=self.start, water_level=self.water_levels.iat[0], elevation=initial_elevation)
         self.water_levels = self.water_levels.rename("water_level")
         # repeat ssc for each month if given a single number
         if isinstance(ssc, (float, int)):
@@ -83,13 +72,22 @@ class Model:
         ssc_series = pd.Series(data=ssc[ssc_index.month - 1], index=ssc_index).asfreq("1D").interpolate()
 
         # remove trailing and lead months to match original index
-        self.ssc = ssc_series.loc[self.water_levels.index[0] : self.water_levels.index[-1]]
+        self.ssc = ssc_series.loc[self.water_levels.index[0]: self.water_levels.index[-1]]
 
-        if self.water_levels.iat[0] > self.elevation:
-            self.logger.debug(f"Tide starts above platform. Skipping first inundation.")
-            elevation = self.calculate_elevation(to=self.end)
-            i = (elevation > self.water_levels).argmax()
-            self.update(index=self.water_levels.index[i], water_level=self.water_levels.index[i], elevation=elevation[i])
+        solve_ivp_kwargs = {
+            'method': 'RK45',
+            'dense_output': False,
+            'first_step': None,
+            'max_step': np.inf,
+            'rtol': 1e-3,
+            'atol': 1e-6,
+        }
+        solve_ivp_kwargs.update(self.solve_ivp_opts)
+        self.solve_ivp_opts = solve_ivp_kwargs
+
+    @property
+    def period(self) -> pd.Timestamp:
+        return self.end - self.start
 
     @property
     def constant_rates(self) -> float:
@@ -112,28 +110,26 @@ class Model:
             elapsed_seconds = (at - self.now).total_seconds()
             return self.constant_rates * elapsed_seconds + self.elevation
         elif to:
-            index = self.water_levels.loc[self.now : to].index
+            index = self.water_levels.loc[self.now: to].index
             elapsed_seconds = (index - self.now).total_seconds()
             return (self.constant_rates * elapsed_seconds).values + self.elevation
 
-    def validate_inundation(self, inundation: Inundation) -> None:
-        save = False
-        if inundation.result.success is False:
-            self.logger.warning(f"Integration failed with message: {inundation.result.message}")
-            save = True
-        if (inundation.data.aggradation < 0.0).any():
-            self.logger.warning("Solution contains negative aggradations.")
-            save = True
-        if (inundation.data.aggradation_max < inundation.data.aggradation).any():
-            overextraction = inundation.data.aggradation.values[-1] - inundation.data.aggradation_max.values[-1]
-            self.overextraction += overextraction
-            over_frac = inundation.data.aggradation.values[-1] / inundation.data.aggradation_max.values[-1]
-            self.logger.trace(
-                f"Solution results in overextraction! Amount: {inundation.overextraction:.2e} m, Percent:"
-                f" {over_frac:.2%} Total: {self.overextraction:.2e} m"
-            )
-        if save:
-            self.invalid_inundations.append(inundation)
+    # def validate_inundation(self, inundation: Inundation) -> None:
+    #     for result in [inundation.flood, inundation.ebb]:
+    #         if result.success is False:
+    #             self.logger.warning(
+    #                 f"Integration failed using {inundation.solve_ivp_opts} with message: {result.message}")
+    #     if (inundation.data.aggradation < 0.0).any():
+    #         self.logger.warning("Solution contains negative aggradations.")
+    #         save = True
+    #     if inundation.data.aggradation[-1] > inundation.slack_depth:
+    #         self.logger.warning("More sediment extracted than possible.")
+    #         save = True
+    #     if inundation.data.depth[-1] > 0:
+    #         self.logger.warning("Inundation ends above platform.")
+    #         save = True
+    #     if save:
+    #         self.invalid_inundations.append(inundation)
 
     def update(self, index: pd.Timestamp, water_level: float, elevation: float) -> None:
         self.logger.trace(f"Updating results: Date={index}, Water Level={water_level}, Elevation={elevation}")
@@ -145,25 +141,25 @@ class Model:
 
         n = pd.Timedelta("1D")
 
-        subset = self.water_levels.loc[self.now : self.now + n].to_frame(name="water_level")
+        subset = self.water_levels.loc[self.now: self.now + n].to_frame(name="water_level")
         subset["elevation"] = self.calculate_elevation(to=subset.index[-1])
         roots = utils.find_roots(a=subset.water_level.values, b=subset.elevation.values)
 
         while len(roots) < 2:
             if subset.index[-1] == self.end and len(roots) == 1:
                 self.logger.trace(f"Partial inundation remaining.")
-                return subset.iloc[roots[0] + 1 :]
+                return subset.iloc[roots[0] + 1:]
             elif subset.index[-1] == self.end and len(roots) == 0:
                 self.logger.trace(f"No inundations remaining.")
                 return None
             else:
                 n = n * 1.5
                 self.logger.trace(f"Expanding search window to {n}.")
-                subset = self.water_levels.loc[self.now : self.now + n].to_frame(name="water_level")
+                subset = self.water_levels.loc[self.now: self.now + n].to_frame(name="water_level")
                 subset["elevation"] = self.calculate_elevation(to=subset.index[-1])
                 roots = utils.find_roots(a=subset.water_level.values, b=subset.elevation.values)
         self.logger.trace(f"Found complete inundation.")
-        return subset.iloc[roots[0] + 1 : roots[1] + 2]
+        return subset.iloc[roots[0] + 1: roots[1] + 2]
 
     def step(self) -> None:
         subset = self.find_next_inundation()
@@ -176,12 +172,13 @@ class Model:
                 bulk_density=self.bulk_density,
                 settling_rate=self.settling_rate,
                 constant_rates=self.constant_rates,
-                integration_method=self.integration_method,
+                solve_ivp_opts=self.solve_ivp_opts,
             )
             if self.save_inundations:
                 self.inundations.append(inundation)
             inundation.integrate()
-            self.validate_inundation(inundation)
+            if inundation.valid is False:
+                self.logger.warning(f'Invalid inundation at index {len(self.inundations)}.')
 
             for record in inundation.data[['water_level', 'elevation']].reset_index().to_dict(orient='records'):
                 self.update(index=record['index'], water_level=record['water_level'], elevation=record['elevation'])
@@ -190,26 +187,61 @@ class Model:
             elevation = self.calculate_elevation(at=self.end)
             self.update(index=self.end, water_level=np.nan, elevation=elevation)
 
+    def initialize(self, end_date, period):
+        if end_date:
+            self.end = pd.to_datetime(end_date)
+        if period:
+            self.end = self.start + pd.to_timedelta(period)
+        if self.period < pd.Timedelta('365.25D'):
+            self.pbar_unit = pd.Timedelta('1D')
+            unit = "Day"
+        else:
+            self.pbar_unit = pd.Timedelta('365.25D')
+            unit = "Year"
+        self.pbar = tqdm(
+            desc=f"W{self.position:02}:{self.id:04}",
+            total=round(self.period / self.pbar_unit, 2),
+            leave=True,
+            unit=unit,
+            dynamic_ncols=True,
+            position=self.position,
+            smoothing=0,
+            postfix={"Date": self.now.strftime("%Y-%m-%d"), "Elevation": self.elevation},
+        )
+        if self.water_levels.iat[0] > self.elevation:
+            self.logger.debug(f"Tide starts above platform. Skipping first inundation.")
+            elevation = self.calculate_elevation(to=self.end)
+            i = (elevation > self.water_levels).argmax()
+            self.update(index=self.water_levels.index[i],
+                        water_level=self.water_levels.index[i], elevation=elevation[i])
+
     def uninitialize(self) -> None:
         self.results = pd.DataFrame.from_records(data=self.results, index="index").squeeze()
         self.pbar.close()
-        oe_per_year = self.overextraction / self.period.days / 365.25
-        if oe_per_year > 0.005:
-            logger.warning(f"Model overextraction > 5 mm/yr. Total: {oe_per_year * 1000:.2f} mm.")
         self.logger.info('Simulation completed. Exiting.')
 
-    def run(self, stop=None, steps=None) -> None:
-        if stop is None:
-            stop = self.end
-        if steps is None:
-            steps = float("inf")
-        stop = pd.to_datetime(stop)
-        while (self.now < stop) and (len(self.inundations) < steps):
+    def run(self, end_date=None, period=None) -> None:
+        self.initialize(end_date, period)
+        while self.now < self.end:
             self.step()
-            new_n = (self.now - self.start).ceil("D").days
+            new_n = round((self.now - self.start) / self.pbar_unit, 2)
             self.pbar.set_postfix({"Date": self.now.strftime("%Y-%m-%d"), "Elevation": self.elevation}, refresh=False)
             self.pbar.update(n=new_n - self.pbar.n)
         self.uninitialize()
+
+    # def run(self, stop=None, steps=None) -> None:
+    #     if stop is None:
+    #         stop = self.end
+    #     if steps is None:
+    #         steps = float("inf")
+    #     stop = pd.to_datetime(stop)
+    #     self.initialize()
+    #     while (self.now < stop) and (len(self.inundations) < steps):
+    #         self.step()
+    #         new_n = (self.now - self.start).ceil("D").days
+    #         self.pbar.set_postfix({"Date": self.now.strftime("%Y-%m-%d"), "Elevation": self.elevation}, refresh=False)
+    #         self.pbar.update(n=new_n - self.pbar.n)
+    #     self.uninitialize()
 
     def plot_results(self, freq="10T") -> None:
 

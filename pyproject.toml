@@ -31,6 +31,7 @@ mypy = "^0.931"
 ipympl = "^0.8.7"
 jupyter-dash = "^0.4.0"
 memory-profiler = "^0.60.0"
+autopep8 = "^1.6.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

@@ -129,7 +129,7 @@ def datetime2num(t: pd.Timestamp) -> float | np.ndarray:
         raise ValueError("t must be a pd.Timestamp or pd.DatetimeIndex.")
 
 
-def num2datetime(t: float | int) -> pd.Timestamp | pd.DatetimeIndex:
+def num2datetime(t: float | int | np.ndarray) -> pd.Timestamp | pd.DatetimeIndex:
     try:
         return pd.to_datetime(t, unit="s")
     except:
