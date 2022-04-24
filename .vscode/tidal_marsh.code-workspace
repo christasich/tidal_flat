@@ -1,13 +1,4 @@
 {
-	"folders": [
-		{
-			"path": ".."
-		},
-		{
-			"name": "els-cas-templates.zip",
-			"uri": "zip:/home/chris/projects/tidal_marsh/reports/els-cas-templates.zip"
-		}
-	],
 	"settings": {
 		"files.exclude": {
 			"**/.git": false,
@@ -138,5 +129,10 @@
 			"[x]"
 		],
 		"todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|^\\s*(-|\\d+.))\\s*($TAGS).*(\\n\\s*//\\s{2,}.*)*",
-	}
+	},
+	"folders": [
+		{
+			"path": ".."
+		}
+	]
 }
