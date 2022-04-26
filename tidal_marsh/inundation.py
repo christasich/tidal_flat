@@ -58,10 +58,16 @@ class Inundation:
         )
 
     def zero_conc(t, y, params):
-        return y[0] - 1e-4
+        return y[0] #- 1e-4
     zero_conc.terminal = True
     zero_conc.direction = -1
     zero_conc = staticmethod(zero_conc)
+
+    # def zero_depth(t, y, params):
+    #     return params.depth(t) #- 1e-4
+    # zero_depth.terminal = True
+    # zero_depth.direction = -1
+    # zero_depth = staticmethod(zero_depth)
 
     @staticmethod
     def solve_flood(t, y, params):
@@ -75,18 +81,24 @@ class Inundation:
 
     @staticmethod
     def solve_ebb(t, y, params):
-        concentration = y[0]
+        concentration = np.sqrt(y[0])
 
         d1dt_aggradation = params.settling_rate * concentration / params.bulk_density
         d1dt_concentration = -(params.settling_rate * concentration) / params.depth(t)
 
-        return [d1dt_concentration, d1dt_aggradation]
+        return [d1dt_concentration ** 2, d1dt_aggradation]
 
     def zero_conc2(t, y, params, mid_t):
-        return y[0] - 1e-4
+        return y[0] #- 1e-4
     zero_conc2.terminal = True
     zero_conc2.direction = -1
     zero_conc2 = staticmethod(zero_conc2)
+
+    # def zero_depth2(t, y, params, mid_t):
+    #     return y[0] #- 1e-4
+    # zero_depth2.terminal = True
+    # zero_depth2.direction = -1
+    # zero_depth2 = staticmethod(zero_depth2)
 
     @staticmethod
     def solve_odes(t, y, params, mid_t):
@@ -100,6 +112,9 @@ class Inundation:
         else:
             d1dt_concentration = -(params.settling_rate * concentration) / params.depth(t)
 
+        # if concentration + d1dt_concentration < 0:
+        #     d1dt_concentration = - concentration
+
         return [d1dt_concentration, d1dt_aggradation]
 
     def integrate2(self):
@@ -108,10 +123,11 @@ class Inundation:
             fun=self.solve_odes,
             t_span=[utils.datetime2num(self.start), utils.datetime2num(self.end)],
             y0=[0.0, 0.0],
-            events=self.zero_conc2,
+            # events=[self.zero_depth2],
             args=(self.params, utils.datetime2num(self.slack_time)),
             **self.solve_ivp_opts,
         )
+        self.set2()
 
     def integrate(self):
 
@@ -119,7 +135,7 @@ class Inundation:
             fun=self.solve_flood,
             t_span=[utils.datetime2num(self.start), utils.datetime2num(self.slack_time)],
             y0=[0.0, 0.0],
-            events=self.zero_conc,
+            # events=self.zero_depth,
             args=[self.params],
             **self.solve_ivp_opts,
         )
@@ -135,7 +151,7 @@ class Inundation:
                 fun=self.solve_ebb,
                 t_span=[utils.datetime2num(self.slack_time), utils.datetime2num(self.end)],
                 y0=[self.flood.y[0][-1], self.flood.y[1][-1]],
-                events=self.zero_conc,
+                # events=self.zero_depth,
                 args=[self.params],
                 **self.solve_ivp_opts,
             )
@@ -162,6 +178,34 @@ class Inundation:
             time = np.append(time, utils.datetime2num(self.end))
             concentration = np.append(concentration, 0.0)
             aggradation = np.append(aggradation, aggradation[-1])
+        index = utils.num2datetime(time)
+        depth = self.params.depth(time)
+        water_level = depth + self.initial_elevation
+        degradation = (time - time[0]) * self.params.constant_rates
+        elevation_change = aggradation + degradation
+        self.data = pd.DataFrame(
+            data={
+                "water_level": water_level,
+                "depth": depth,
+                "concentration": concentration,
+                "aggradation": aggradation,
+                "degradation": degradation,
+                "elevation_change": elevation_change,
+                "elevation": self.initial_elevation + elevation_change,
+            },
+            index=index,
+        )
+        self.aggradation_total = self.data.aggradation.values[-1]
+        self.degradation_total = self.data.degradation.values[-1]
+
+    def set2(self):
+        time = self.result.t
+        concentration = self.result.y[0]
+        aggradation = self.result.y[1]
+        # if utils.num2datetime(self.result.t[-1]) != self.end:
+        #     time = np.append(time, utils.datetime2num(self.end))
+        #     concentration = np.append(concentration, 0.0)
+        #     aggradation = np.append(aggradation, aggradation[-1])
         index = utils.num2datetime(time)
         depth = self.params.depth(time)
         water_level = depth + self.initial_elevation
@@ -216,22 +260,22 @@ class Inundation:
             'aggradation': f"{self.aggradation_total:.2e}",
             'degradation': f"{self.degradation_total:.2e}",
             '$\Delta$elevation': f"{self.aggradation_total + self.degradation_total:.2e}",
-            'msg': '\n'.join(wrap(self.result.message, 20)),
+            # 'msg': '\n'.join(wrap(self.result.message, 20)),
             **self.solve_ivp_opts
         }
         info = pd.DataFrame(data=data.values(), index=data.keys())
 
-        int_end = utils.num2datetime(self.result.t[-1])
+        # int_end = utils.num2datetime(self.result.t[-1])
 
         for v in ['e', 'c', 'd']:
             a = ax[v]
             a.axvline(self.slack_time, color="black", linestyle="--")
-            a.axvline(int_end, color='black', ls=':')
+            # a.axvline(int_end, color='black', ls=':')
             a.ticklabel_format(axis="y", useOffset=False)
 
         ax['i'].table(cellText=info.values, rowLabels=info.index, cellLoc='center', bbox=[0.25, 0.25, 0.5, 0.5])
         ax['i'].axis('off')
 
         ax['e'].text(x=self.slack_time, y=ax['e'].get_ylim()[1], s='slack', ha='center')
-        ax['e'].text(x=int_end, y=ax['e'].get_ylim()[1], s='end', ha='center')
+        # ax['e'].text(x=int_end, y=ax['e'].get_ylim()[1], s='end', ha='center')
         plt.xticks(rotation=45)

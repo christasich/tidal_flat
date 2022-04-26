@@ -131,10 +131,10 @@ class Model:
     #     if save:
     #         self.invalid_inundations.append(inundation)
 
-    def update(self, index: pd.Timestamp, water_level: float, elevation: float) -> None:
+    def update(self, index: pd.Timestamp, water_level: float, elevation: float, skip='0S') -> None:
         self.logger.trace(f"Updating results: Date={index}, Water Level={water_level}, Elevation={elevation}")
         self.results.append({"index": index, "water_level": water_level, "elevation": elevation})
-        self.now = index
+        self.now = index + pd.Timedelta(skip)
         self.elevation = elevation
 
     def find_next_inundation(self) -> pd.DataFrame | None:
@@ -159,7 +159,7 @@ class Model:
                 subset["elevation"] = self.calculate_elevation(to=subset.index[-1])
                 roots = utils.find_roots(a=subset.water_level.values, b=subset.elevation.values)
         self.logger.trace(f"Found complete inundation.")
-        return subset.iloc[roots[0] + 1: roots[1] + 2]
+        return subset.iloc[roots[0] + 1: roots[1] + 1]
 
     def step(self) -> None:
         subset = self.find_next_inundation()
@@ -177,11 +177,11 @@ class Model:
             if self.save_inundations:
                 self.inundations.append(inundation)
             inundation.integrate()
-            if inundation.valid is False:
-                self.logger.warning(f'Invalid inundation at index {len(self.inundations)}.')
+            # if inundation.valid is False:
+            #     self.logger.warning(f'Invalid inundation at index {len(self.inundations)}.')
 
             for record in inundation.data[['water_level', 'elevation']].reset_index().to_dict(orient='records'):
-                self.update(index=record['index'], water_level=record['water_level'], elevation=record['elevation'])
+                self.update(index=record['index'], water_level=record['water_level'], elevation=record['elevation'], skip='1H')
         else:
             self.logger.trace("No inunundations remaining.")
             elevation = self.calculate_elevation(at=self.end)
