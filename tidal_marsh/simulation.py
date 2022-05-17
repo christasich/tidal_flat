@@ -65,7 +65,6 @@ def simulate(
     organic_rate,
     compaction_rate,
     subsidence_rate,
-    integration_method,
 ):
     global pos
     if not pos:
@@ -84,7 +83,6 @@ def simulate(
             organic_rate=organic_rate,
             compaction_rate=compaction_rate,
             subsidence_rate=subsidence_rate,
-            integration_method=integration_method,
             id=id,
             position=pos,
         )
@@ -135,10 +133,10 @@ class Simulations:
 
         config.parallel.max_cores = min(config.parallel.max_cores, mp.cpu_count())
 
-        ssc = pd.DataFrame.from_records(config.platform.ssc, index="month").reindex(np.arange(1, 13, 1))
-        ssc = pd.concat([ssc] * 2).reset_index().interpolate(method="cubicspline")
-        ssc = ssc.loc[5 : 5 + 11].set_index("month").squeeze().sort_index()
-        config.platform.ssc = ssc
+        # ssc = pd.DataFrame.from_records(config.platform.ssc, index="month").reindex(np.arange(1, 13, 1))
+        # ssc = pd.concat([ssc] * 2).reset_index().interpolate(method="cubicspline")
+        # ssc = ssc.loc[5 : 5 + 11].set_index("month").squeeze().sort_index()
+        # config.platform.ssc = ssc
         self.config = config
 
     def configure_logging(self):
@@ -237,7 +235,7 @@ class Simulations:
 
     def write_metadata(self):
         self.metadata = [{**d[0], **d[1]} for d in it.product(self.tide_params, self.platform_params)]
-        self.metadata = pd.DataFrame.from_records(self.metadata).drop(columns=["ssc"])
+        self.metadata = pd.DataFrame.from_records(self.metadata)
         self.metadata.index.name = "id"
         self.metadata['tide'] = self.metadata.apply(lambda row: (self.cache_path / f"tides.z2100_{row.z2100}.b_{row.b}.beta_{row.beta}.k_{row.k:.0f}.pickle").as_posix(), axis=1)
         self.metadata['result'] = [(self.wdir / 'data' / f'{i:04}.csv').as_posix() for i in self.metadata.index]
@@ -284,14 +282,13 @@ class Simulations:
                 "wdir": self.wdir,
                 "id": row.Index,
                 "initial_elevation": row.initial_elevation,
-                "ssc": self.config.platform.ssc * row.ssc_factor,
+                "ssc": row.ssc,
                 "grain_diameter": row.grain_diameter,
                 "grain_density": row.grain_density,
                 "bulk_density": row.bulk_density,
                 "organic_rate": row.organic_rate,
                 "compaction_rate": row.compaction_rate,
                 "subsidence_rate": row.subsidence_rate,
-                "integration_method": row.integration_method,
                 }
             results.append(pool.apply_async(func=simulate, kwds=kwds, callback=callback))
             id += 1
