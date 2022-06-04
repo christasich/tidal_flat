@@ -91,10 +91,10 @@ class Model:
             elapsed_seconds = (index - self.now).total_seconds()
             return (self.constant_rates * elapsed_seconds).values + self.elevation
 
-    def update(self, index: pd.Timestamp, water_level: float, elevation: float, skip='0S') -> None:
+    def update(self, index: pd.Timestamp, water_level: float, elevation: float) -> None:
         self.logger.trace(f"Updating results: Date={index}, Water Level={water_level}, Elevation={elevation}")
         self.results.append({"index": index, "water_level": water_level, "elevation": elevation})
-        self.now = index + pd.Timedelta(skip)
+        self.now = index
         self.elevation = elevation
 
     def find_next_inundation(self) -> pd.DataFrame | None:
@@ -156,8 +156,9 @@ class Model:
             self.logger.debug(f"Tide starts above platform. Skipping first inundation.")
             elevation = self.calculate_elevation(to=self.end)
             i = (elevation > self.water_levels).argmax()
+            self.degradation_total = self.degradation_total + (elevation[i] - self.elevation)
             self.update(index=self.water_levels.index[i],
-                        water_level=self.water_levels.index[i], elevation=elevation[i])
+                        water_level=self.water_levels[i], elevation=elevation[i])
 
     def uninitialize(self) -> None:
         self.results = pd.DataFrame.from_records(data=self.results, index="index").squeeze()
@@ -173,12 +174,24 @@ class Model:
             if not inundation.valid:
                 self.invalid_inundations.append(inundation)
 
+            self.degradation_total = self.degradation_total + (inundation.initial_elevation - self.elevation)
             for record in inundation.result[['water_level', 'elevation']].reset_index().to_dict(orient='records'):
                 self.update(index=record['index'], water_level=record['water_level'],
-                            elevation=record['elevation'], skip='1H')
+                            elevation=record['elevation'])
+            self.aggradation_total = self.aggradation_total + inundation.aggradation_total
+            self.degradation_total = self.degradation_total + inundation.degradation_total
+
+            if inundation.end == self.end:
+                self.logger.trace("No inunundations remaining.")
+            else:
+                i = inundation.end + pd.Timedelta('1H')
+                elevation = self.calculate_elevation(at=i)
+                self.degradation_total = self.degradation_total + (elevation - self.elevation)
+                self.update(index=i, water_level=self.water_levels[i], elevation=elevation)
         else:
             self.logger.trace("No inunundations remaining.")
             elevation = self.calculate_elevation(at=self.end)
+            self.degradation_total = self.degradation_total - (self.elevation - elevation)
             self.update(index=self.end, water_level=np.nan, elevation=elevation)
 
     def run(self, end_date=None, period=None) -> None:
@@ -192,7 +205,8 @@ class Model:
 
     def plot_results(self, freq="10T") -> None:
 
-        data = pd.concat([self.water_levels, self.results], axis=1).resample(freq).mean()
+        # data = pd.concat([self.water_levels, self.results], axis=1).resample(freq).mean()
+        data = self.results.resample(freq).mean()
 
         _, ax = plt.subplots(figsize=(13, 5), constrained_layout=True)
 
