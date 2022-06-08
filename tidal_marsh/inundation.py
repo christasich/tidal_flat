@@ -26,8 +26,8 @@ class Inundation:
     ebb: OdeResult = field(init=False, default=None)
     valid: bool = True
     result: pd.DataFrame = field(init=False, default=None)
-    aggradation_total: float = 0.0
-    degradation_total: float = 0.0
+    total_aggradation: float = 0.0
+    total_subsidence: float = 0.0
 
     def __post_init__(self):
         self.start = self.water_levels.index[0]
@@ -37,12 +37,6 @@ class Inundation:
         self.period = self.end - self.start
         self.slack = self.water_levels.idxmax()
         self.slack_depth = self.water_levels.max() - self.initial_elevation
-        while self.water_levels.shape[0] <= 3:
-            freq = (self.water_levels.index.freq / 2).freqstr
-            self.logger.debug(
-                f"Inundation is < 3 data points. Spline interpolation requires k=3. Upsampling to {freq}."
-            )
-            self.water_levels = self.water_levels.asfreq(freq=freq).interpolate()
         time = (self.water_levels.index-self.water_levels.index[0]).total_seconds().values
         depth = self.water_levels.values - self.initial_elevation
         self.depth_spl = InterpolatedUnivariateSpline(x=time, y=depth, k=3)
@@ -134,8 +128,8 @@ class Inundation:
             },
             index=index,
         )
-        self.aggradation_total = self.result.aggradation.values[-1]
-        self.degradation_total = self.result.degradation.values[-1]
+        self.total_aggradation = self.result.aggradation.values[-1]
+        self.total_subsidence = self.result.degradation.values[-1]
 
     def plot(self):
 
@@ -171,9 +165,9 @@ class Inundation:
             'start': self.start,
             'end': self.end,
             'period': f"{self.period.components.hours:02}H {self.period.components.minutes:02}M {self.period.components.seconds:02}S",
-            'aggradation': f"{self.aggradation_total:.2e}",
-            'degradation': f"{self.degradation_total:.2e}",
-            '$\Delta$elevation': f"{self.aggradation_total + self.degradation_total:.2e}",
+            'aggradation': f"{self.total_aggradation:.2e}",
+            'degradation': f"{self.total_subsidence:.2e}",
+            '$\Delta$elevation': f"{self.total_aggradation + self.total_subsidence:.2e}",
             **self.solve_ivp_opts
         }
         info = pd.DataFrame(data=data.values(), index=data.keys())

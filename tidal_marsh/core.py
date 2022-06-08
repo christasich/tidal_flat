@@ -29,11 +29,12 @@ class Model:
     # diagnositic
     id: int = 0
     position: int = 0
+    pbar_name: str = None
     save_inundations: bool = field(repr=False, default=False)
 
     # auto initialize these fields
-    aggradation_total: float = field(init=False, default=0.0)
-    degradation_total: float = field(init=False, default=0.0)
+    total_aggradation: float = field(init=False, default=0.0)
+    total_subsidence: float = field(init=False, default=0.0)
     inundations: list = field(init=False, default_factory=list)
     invalid_inundations: list = field(init=False, default_factory=list)
     results: pd.DataFrame = field(init=False, default_factory=list)
@@ -99,26 +100,35 @@ class Model:
 
     def find_next_inundation(self) -> pd.DataFrame | None:
 
-        n = pd.Timedelta("1D")
+        valid = False
+        while valid is False:
 
-        subset = self.water_levels.loc[self.now: self.now + n].to_frame(name="water_level")
-        subset["elevation"] = self.calculate_elevation(to=subset.index[-1])
-        roots = utils.find_roots(a=subset.water_level.values, b=subset.elevation.values + 1e-3)
+            n = pd.Timedelta("1D")
 
-        while len(roots) < 2:
-            if subset.index[-1] == self.end and len(roots) == 1:
-                self.logger.trace(f"Partial inundation remaining.")
-                roots = np.append(roots, None)
-            elif subset.index[-1] == self.end and len(roots) == 0:
-                self.logger.trace(f"No inundations remaining.")
-                return None
+            subset = self.water_levels.loc[self.now: self.now + n].to_frame(name="water_level")
+            subset["elevation"] = self.calculate_elevation(to=subset.index[-1])
+            roots = utils.find_roots(a=subset.water_level.values, b=subset.elevation.values + 1e-3)
+
+            while len(roots) < 2:
+                if subset.index[-1] == self.end and len(roots) == 1:
+                    self.logger.trace(f"Partial inundation remaining.")
+                    roots = np.append(roots, None)
+                elif subset.index[-1] == self.end and len(roots) == 0:
+                    self.logger.trace(f"No inundations remaining.")
+                    return None
+                else:
+                    n = n * 1.5
+                    self.logger.trace(f"Expanding search window to {n}.")
+                    subset = self.water_levels.loc[self.now: self.now + n].to_frame(name="water_level")
+                    subset["elevation"] = self.calculate_elevation(to=subset.index[-1])
+                    roots = utils.find_roots(a=subset.water_level.values, b=subset.elevation.values + 1e-3)
+            i = subset.iloc[roots[0] + 1: roots[1] + 1]
+            if i.shape[0] <= 3:
+                self.logger.debug(f'Inundation is too small (len={i.shape[0]}). Skipping.')
+                self.now = i.index[-1] + pd.Timedelta('1H')
+                continue
             else:
-                n = n * 1.5
-                self.logger.trace(f"Expanding search window to {n}.")
-                subset = self.water_levels.loc[self.now: self.now + n].to_frame(name="water_level")
-                subset["elevation"] = self.calculate_elevation(to=subset.index[-1])
-                roots = utils.find_roots(a=subset.water_level.values, b=subset.elevation.values + 1e-3)
-        i = subset.iloc[roots[0] + 1: roots[1]]
+                valid = True
         self.logger.trace(f"Initializing Inundation at {subset.index[0]}.")
         inundation = Inundation(
             water_levels=i.water_level,
@@ -143,7 +153,7 @@ class Model:
             self.pbar_unit = pd.Timedelta('365.25D')
             unit = "Year"
         self.pbar = tqdm(
-            desc=f"W{self.position:02}:{self.id:04}",
+            desc=self.pbar_name,
             total=round(self.period / self.pbar_unit, 2),
             leave=True,
             unit=unit,
@@ -156,7 +166,7 @@ class Model:
             self.logger.debug(f"Tide starts above platform. Skipping first inundation.")
             elevation = self.calculate_elevation(to=self.end)
             i = (elevation > self.water_levels).argmax()
-            self.degradation_total = self.degradation_total + (elevation[i] - self.elevation)
+            self.total_subsidence = self.total_subsidence + (elevation[i] - self.elevation)
             self.update(index=self.water_levels.index[i],
                         water_level=self.water_levels[i], elevation=elevation[i])
 
@@ -174,24 +184,24 @@ class Model:
             if not inundation.valid:
                 self.invalid_inundations.append(inundation)
 
-            self.degradation_total = self.degradation_total + (inundation.initial_elevation - self.elevation)
+            self.total_subsidence = self.total_subsidence + (inundation.initial_elevation - self.elevation)
             for record in inundation.result[['water_level', 'elevation']].reset_index().to_dict(orient='records'):
                 self.update(index=record['index'], water_level=record['water_level'],
                             elevation=record['elevation'])
-            self.aggradation_total = self.aggradation_total + inundation.aggradation_total
-            self.degradation_total = self.degradation_total + inundation.degradation_total
+            self.total_aggradation = self.total_aggradation + inundation.total_aggradation
+            self.total_subsidence = self.total_subsidence + inundation.total_subsidence
 
             if inundation.end == self.end:
                 self.logger.trace("No inunundations remaining.")
             else:
                 i = inundation.end + pd.Timedelta('1H')
                 elevation = self.calculate_elevation(at=i)
-                self.degradation_total = self.degradation_total + (elevation - self.elevation)
+                self.total_subsidence = self.total_subsidence + (elevation - self.elevation)
                 self.update(index=i, water_level=self.water_levels[i], elevation=elevation)
         else:
             self.logger.trace("No inunundations remaining.")
             elevation = self.calculate_elevation(at=self.end)
-            self.degradation_total = self.degradation_total - (self.elevation - elevation)
+            self.total_subsidence = self.total_subsidence - (self.elevation - elevation)
             self.update(index=self.end, water_level=np.nan, elevation=elevation)
 
     def run(self, end_date=None, period=None) -> None:
