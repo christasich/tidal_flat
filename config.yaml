@@ -39,7 +39,7 @@ tides:
     k: [-10, -30, -50]
 
 platform:
-  initial_elevation: 2.6
+  initial_elevation: 2.6``
   ssc: 0.5
   grain_diameter: [15.0e-6, 25.0e-6, 35.0e-6]
   grain_density: 2.65e+3
