@@ -31,18 +31,25 @@ hostname = socket.gethostname()
 position = mp.Value('i', 0)
 pos = None
 
-def cache_tide(cache_dir, z2100, b, beta, k):
-    filename = f"tides.z2100_{z2100}.b_{b}.beta_{beta}.k_{k}.pickle"
+
+def to_string(**kwargs):
+    return '.'.join([f'{k}_{v}' for k, v in kwargs.items()])
+
+# def cache_tide(cache_dir, base, z2100, b, beta, k):
+
+
+def cache_tide(cache_dir, base_path, slr_kwargs, amp_kwargs):
+    filename = 'tides.' + to_string(**slr_kwargs) + '.' + to_string(**amp_kwargs) + '.pickle'
     path = cache_dir / filename
     if path.exists():
         logger.trace(f"Skipping. {filename} already in cache.")
         return
-    with open(cache_dir / "base.pickle", "rb") as file:
+    with open(base_path, 'rb') as file:
         base = pickle.load(file)
-    if beta == 0.0 and np.isnan(k):
-        water_levels = base.data.elevation + base.calc_slr(z2100=z2100, b=b)
+    if amp_kwargs['beta'] == 0.0 and np.isnan(amp_kwargs['k']):
+        water_levels = base.data.elevation + base.calc_slr(**slr_kwargs)
     else:
-        water_levels = base.data.elevation + base.calc_slr(z2100=z2100, b=b) + base.calc_amplification(beta=beta, k=k)
+        water_levels = base.data.elevation + base.calc_slr(**slr_kwargs) + base.calc_amplification(**amp_kwargs)
     water_levels.to_frame(name="elvevation").squeeze().to_pickle(path)
     logger.debug(f"Done. {filename} cached successfully.")
 
@@ -52,6 +59,7 @@ def cache_tide(cache_dir, z2100, b, beta, k):
 #     ssc = ssc.loc[5 : 5 + 11].set_index("month").squeeze().sort_index()
 #     self.config.platform.ssc = ssc
 #     logger.info("Reshaped and interpolated SSC to monthly frequency.")
+
 
 def simulate(
     tide,
@@ -85,6 +93,7 @@ def simulate(
             subsidence_rate=subsidence_rate,
             id=id,
             position=pos,
+            pbar_name={f'| N0={initial_elevation:.1f} | SSC={ssc:.2f} | '}
         )
         model.run()
         save_path = wdir / "data"
@@ -107,8 +116,9 @@ class Simulations:
     config: Bunch = field(init=False)
     wdir: Path = field(init=False)
     cache_path: Path = field(init=False)
+    wl_data: Path = field(init=False)
+    wl_size: float = field(init=False)
     base_path: Path = field(init=False)
-    base_size: float = field(init=False)
     cached_tides: list = field(init=False, default_factory=list)
     n_cores: int = 1
     tide_params: Bunch = field(init=False)
@@ -179,8 +189,15 @@ class Simulations:
         self.tide_params = utils.make_combos(**self.config.tides.slr, **self.config.tides.amp)
         if 0 in self.config.tides.amp['beta']:
             self.tide_params = [d for d in self.tide_params if d['beta'] != 0]
-            self.tide_params = self.tide_params + utils.make_combos(**self.config.tides.slr, **{'beta': [0.0], 'k': [np.nan]})
+            self.tide_params = self.tide_params + \
+                utils.make_combos(**self.config.tides.slr, **{'beta': [0.0], 'k': [np.nan]})
         self.platform_params = utils.make_combos(**self.config.platform)
+        if isinstance(self.config.platform.trapping_efficiency, str):
+            sscs = pd.read_pickle(self.config.platform.trapping_efficiency)
+            for bunch in self.platform_params:
+                bunch.trapping_efficiency = sscs.loc[bunch.initial_elevation]
+                bunch.ssc = bunch.channel_ssc * bunch.trapping_efficiency
+
         logger.info(
             f"Made combination of parameters for a {len(self.tide_params)} different tides and"
             f" {len(self.platform_params)} different platforms for a total of {len(self.tide_params) * len(self.platform_params)} runs."
@@ -198,16 +215,16 @@ class Simulations:
         )
 
     def build_base(self):
-        logger.info(f"Loading base tides from pickle file at {self.base_path}.")
-        base = pd.read_pickle(self.base_path)
-        self.base_size = base.memory_usage()
-        logger.info(f"Base tide is {self.base_size / 1024 ** 3:.2f} GB.")
-        base_pickle = self.cache_path / "base.pickle"
-        if not base_pickle.exists():
+        logger.info(f"Loading base tides from pickle file at {self.wl_data}.")
+        base = pd.read_pickle(self.wl_data)
+        self.wl_size = base.memory_usage()
+        logger.info(f"Base tide is {self.wl_size / 1024 ** 3:.2f} GB.")
+        self.base_path = self.cache_path / self.wl_data.name.replace('tides', 'base')
+        if not self.base_path.exists():
             logger.info(f"Tide object not in cache. Creating from base tides.")
             tide_obj = tides.Tides(water_levels=base)
             logger.info(f"Caching base tides.")
-            with open(base_pickle, "wb") as file:
+            with open(self.base_path, "wb") as file:
                 pickle.dump(tide_obj, file, pickle.HIGHEST_PROTOCOL)
         else:
             logger.info("Tide object already in cache.")
@@ -219,13 +236,17 @@ class Simulations:
         freeze_support()
         tqdm.set_lock(RLock())
 
-        self.configure_parallel(mem_per_core=self.base_size * 7, n_jobs=len(self.tide_params))
+        self.configure_parallel(mem_per_core=self.wl_size * 7, n_jobs=len(self.tide_params))
         logger.info(f"Building cache for {len(self.tide_params)} different tides.")
         results = []
-        self.pbar = tqdm(desc="PREPARING TIDES", total=len(self.tide_params), leave=True, unit="tide", dynamic_ncols=True)
+        self.pbar = tqdm(desc="PREPARING TIDES", total=len(self.tide_params),
+                         leave=True, unit="tide", dynamic_ncols=True)
         pool = mp.Pool(processes=self.n_cores, initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),))
         for params in self.tide_params:
-            kwds = {"cache_dir": self.cache_path, **params}
+            slr_kwargs = dict(list(self.tide_params[0].items())[:3])
+            amp_kwargs = dict(list(self.tide_params[0].items())[3:])
+            kwds = {"cache_dir": self.cache_path, 'base_path': self.base_path.as_posix(),
+                    'slr_kwargs': slr_kwargs, 'amp_kwargs': amp_kwargs}
             results.append(pool.apply_async(func=cache_tide, kwds=kwds, callback=callback))
         pool.close()
         pool.join()
@@ -237,7 +258,8 @@ class Simulations:
         self.metadata = [{**d[0], **d[1]} for d in it.product(self.tide_params, self.platform_params)]
         self.metadata = pd.DataFrame.from_records(self.metadata)
         self.metadata.index.name = "id"
-        self.metadata['tide'] = self.metadata.apply(lambda row: (self.cache_path / f"tides.z2100_{row.z2100}.b_{row.b}.beta_{row.beta}.k_{row.k:.0f}.pickle").as_posix(), axis=1)
+        self.metadata['tide'] = self.metadata.apply(lambda row: (
+            self.cache_path / f"tides.z2100_{row.z2100}.a_{row.a}.b_{row.b}.beta_{row.beta}.k_{row.k:.0f}.pickle").as_posix(), axis=1)
         self.metadata['result'] = [(self.wdir / 'data' / f'{i:04}.csv').as_posix() for i in self.metadata.index]
         self.metadata.to_csv(self.wdir / "metadata.csv")
 
@@ -245,7 +267,7 @@ class Simulations:
     def setup(self):
         self.wdir = self.config.workspace.path / time.strftime("%Y-%m-%d_%H.%M.%S")
         self.cache_path = self.config.cache.path
-        self.base_path = self.config.tides.path
+        self.wl_data = self.config.tides.path
         self.setup_workspace()
         self.configure_logging()
         self.make_combos()
@@ -271,10 +293,11 @@ class Simulations:
         freeze_support()
         tqdm.set_lock(RLock())
 
-        self.configure_parallel(mem_per_core=self.base_size * 1.1, n_jobs=len(param_df))
+        self.configure_parallel(mem_per_core=self.wl_size * 1.1, n_jobs=len(param_df))
         results = []
         id = 0
-        self.pbar = tqdm(desc="RUNNING MODELS", total=len(param_df), leave=True, smoothing=0, unit="model", dynamic_ncols=True)
+        self.pbar = tqdm(desc="RUNNING MODELS", total=len(param_df), leave=True,
+                         smoothing=0, unit="model", dynamic_ncols=True)
         pool = mp.Pool(processes=self.n_cores, initializer=init, initargs=(tqdm.get_lock(),))
         for row in param_df.itertuples():
             kwds = {
@@ -289,7 +312,7 @@ class Simulations:
                 "organic_rate": row.organic_rate,
                 "compaction_rate": row.compaction_rate,
                 "subsidence_rate": row.subsidence_rate,
-                }
+            }
             results.append(pool.apply_async(func=simulate, kwds=kwds, callback=callback))
             id += 1
         pool.close()

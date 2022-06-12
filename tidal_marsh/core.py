@@ -122,7 +122,10 @@ class Model:
                     subset = self.water_levels.loc[self.now: self.now + n].to_frame(name="water_level")
                     subset["elevation"] = self.calculate_elevation(to=subset.index[-1])
                     roots = utils.find_roots(a=subset.water_level.values, b=subset.elevation.values + 1e-3)
-            i = subset.iloc[roots[0] + 1: roots[1] + 1]
+            if roots[1]:
+                i = subset.iloc[roots[0] + 1: roots[1] + 1]
+            elif roots[1] is None:
+                i = subset.iloc[roots[0] + 1:]
             if i.shape[0] <= 3:
                 self.logger.debug(f'Inundation is too small (len={i.shape[0]}). Skipping.')
                 self.now = i.index[-1] + pd.Timedelta('1H')

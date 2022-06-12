@@ -1,6 +1,6 @@
 workspace:
   path: ./results
-  overwrite: False
+  overwrite: True
 
 cache:
   path: ./data/.cache/
@@ -32,15 +32,18 @@ logging:
 tides:
   path: ./data/processed/tides_2020-2120.pickle
   slr:
-    z2100: [0.3, 0.7, 1.1]
+    z2100: !!null #[0.3, 0.7, 1.1]
+    a: 0.0
     b: 0.003
   amp:
-    beta: [0.0015, 0.0075, 0.0]
-    k: [-10, -30, -50]
+    beta: [0.0] #[0.0015, 0.0075, 0.0]
+    k: [0.0] #[-10, -30, -50]
 
 platform:
-  initial_elevation: 2.6``
-  ssc: 0.5
+  initial_elevation: [2.3, 2.35, 2.4, 2.45, 2.5, 2.55, 2.6]
+  channel_ssc: 0.5
+  ssc: !!null
+  trapping_efficiency: 'data/processed/calibrated_te.pickle'
   grain_diameter: [15.0e-6, 25.0e-6, 35.0e-6]
   grain_density: 2.65e+3
   bulk_density: [700, 1000, 1300]

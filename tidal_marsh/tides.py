@@ -166,7 +166,6 @@ class Tides:
             index = pd.date_range(start="2000", end=self.data.index[-1], freq=self.data.index.freq)
             t = (index - index[0]).values / pd.Timedelta("365.25D")
             a = (z2100 - b * 100) / 100 ** 2
-            #a * t ** 2 + b * t + c
             slr = pd.Series(index=index, data=quadratic(t=t, a=a, b=b)).loc[self.data.index[0]:]
             slr = slr - slr.iat[0]
         else:
