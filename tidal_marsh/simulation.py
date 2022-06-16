@@ -93,9 +93,11 @@ def simulate(
             subsidence_rate=subsidence_rate,
             id=id,
             position=pos,
-            pbar_name={f'| N0={initial_elevation:.1f} | SSC={ssc:.2f} | '}
+            pbar_name=f'W{pos}R{id:04} | N0={initial_elevation:.1f} | SSC={ssc:.2f} |'
         )
+        model.initialize()
         model.run()
+        model.uninitialize()
         save_path = wdir / "data"
         save_path.mkdir(exist_ok=True)
         model.results.to_csv(save_path / f"{id:04}.csv")

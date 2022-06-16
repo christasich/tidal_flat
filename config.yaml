@@ -1,6 +1,6 @@
 workspace:
   path: ./results
-  overwrite: True
+  overwrite: False
 
 cache:
   path: ./data/.cache/
@@ -16,7 +16,7 @@ logging:
     - type: stderr
       enabled: False
       config:
-        level: TRACE
+        level: DEBUG
         colorize: True
         backtrace: False
         diagnose: True
@@ -43,7 +43,7 @@ platform:
   initial_elevation: [2.3, 2.35, 2.4, 2.45, 2.5, 2.55, 2.6]
   channel_ssc: 0.5
   ssc: !!null
-  trapping_efficiency: 'data/processed/calibrated_te.pickle'
+  trapping_efficiency: data/processed/calibrated_te.pickle
   grain_diameter: [15.0e-6, 25.0e-6, 35.0e-6]
   grain_density: 2.65e+3
   bulk_density: [700, 1000, 1300]

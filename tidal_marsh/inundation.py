@@ -26,8 +26,8 @@ class Inundation:
     ebb: OdeResult = field(init=False, default=None)
     valid: bool = True
     result: pd.DataFrame = field(init=False, default=None)
-    total_aggradation: float = 0.0
-    total_subsidence: float = 0.0
+    aggradation: float = 0.0
+    subsidence: float = 0.0
 
     def __post_init__(self):
         self.start = self.water_levels.index[0]
@@ -128,8 +128,8 @@ class Inundation:
             },
             index=index,
         )
-        self.total_aggradation = self.result.aggradation.values[-1]
-        self.total_subsidence = self.result.degradation.values[-1]
+        self.aggradation = self.result.aggradation.values[-1]
+        self.subsidence = self.result.degradation.values[-1]
 
     def plot(self):
 
@@ -165,9 +165,9 @@ class Inundation:
             'start': self.start,
             'end': self.end,
             'period': f"{self.period.components.hours:02}H {self.period.components.minutes:02}M {self.period.components.seconds:02}S",
-            'aggradation': f"{self.total_aggradation:.2e}",
-            'degradation': f"{self.total_subsidence:.2e}",
-            '$\Delta$elevation': f"{self.total_aggradation + self.total_subsidence:.2e}",
+            'aggradation': f"{self.aggradation:.2e}",
+            'degradation': f"{self.subsidence:.2e}",
+            '$\Delta$elevation': f"{self.aggradation + self.subsidence:.2e}",
             **self.solve_ivp_opts
         }
         info = pd.DataFrame(data=data.values(), index=data.keys())

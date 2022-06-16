@@ -33,8 +33,10 @@ class Model:
     save_inundations: bool = field(repr=False, default=False)
 
     # auto initialize these fields
-    total_aggradation: float = field(init=False, default=0.0)
-    total_subsidence: float = field(init=False, default=0.0)
+    # aggradation: float = field(init=False, default=0.0)
+    # subsidence: float = field(init=False, default=0.0)
+    # hydroperiod: float = field(init=False, default=pd.to_timedelta('0H'))
+    # num_inundations: int = field(init=False, default=0)
     inundations: list = field(init=False, default_factory=list)
     invalid_inundations: list = field(init=False, default_factory=list)
     results: pd.DataFrame = field(init=False, default_factory=list)
@@ -50,7 +52,16 @@ class Model:
         self.end = self.water_levels.index[-1]
         self.timestep = pd.Timedelta(self.water_levels.index.freq)
         self.logger = logger.patch(lambda record: record["extra"].update(model_time=self.now))
-        self.update(index=self.start, water_level=self.water_levels.iat[0], elevation=initial_elevation)
+        self.elevation = initial_elevation
+        init_result = {
+            'index': self.start,
+            'elevation': self.elevation,
+            'aggradation': 0.0,
+            'subsidence': 0.0,
+            'hydroperiod': pd.to_timedelta('0H'),
+            'num_inundations': 0
+        }
+        self.results.append(init_result)
         self.water_levels = self.water_levels.rename("water_level")
         solve_ivp_kwargs = {
             'method': 'RK45',
@@ -79,9 +90,9 @@ class Model:
     def inow(self) -> int:
         return self.water_levels.index.get_loc(self.now)
 
-    @property
-    def state(self) -> pd.Series:
-        return pd.Series(data={"elevation": self.elevation}, index=self.now)
+    # @property
+    # def report(self, date) -> pd.Series:
+    #     return pd.Series(data={"elevation": self.elevation}, index=self.now)
 
     def calculate_elevation(self, at: pd.Timestamp = None, to: pd.Timestamp = None) -> float | pd.Series:
         if at:
@@ -92,11 +103,27 @@ class Model:
             elapsed_seconds = (index - self.now).total_seconds()
             return (self.constant_rates * elapsed_seconds).values + self.elevation
 
-    def update(self, index: pd.Timestamp, water_level: float, elevation: float) -> None:
-        self.logger.trace(f"Updating results: Date={index}, Water Level={water_level}, Elevation={elevation}")
-        self.results.append({"index": index, "water_level": water_level, "elevation": elevation})
-        self.now = index
-        self.elevation = elevation
+    def update(self, index, **kwargs) -> None:
+        current = {
+            'elevation': self.results[-1]['elevation'],
+            'aggradation': self.results[-1]['aggradation'],
+            'subsidence': self.results[-1]['subsidence'],
+            'hydroperiod': self.results[-1]['hydroperiod'],
+            'num_inundations': self.results[-1]['num_inundations']
+        }
+        delta = {
+            'aggradation': 0.0,
+            'subsidence': kwargs['elevation'],
+            'hydroperiod': pd.to_timedelta('0H'),
+            'num_inundations': 0
+        }
+        delta.update(kwargs)
+        result = {k: current.get(k, 0) + delta.get(k, 0) for k in set(current) | set(delta)}
+        result.update({'index': index})
+        self.logger.trace(f"Updating results. New result={result}")
+        self.results.append(result)
+        self.now = result['index']
+        self.elevation = result['elevation']
 
     def find_next_inundation(self) -> pd.DataFrame | None:
 
@@ -144,7 +171,7 @@ class Model:
         )
         return inundation
 
-    def initialize(self, end_date, period):
+    def initialize(self, end_date=None, period=None):
         if end_date:
             self.end = pd.to_datetime(end_date)
         if period:
@@ -169,12 +196,11 @@ class Model:
             self.logger.debug(f"Tide starts above platform. Skipping first inundation.")
             elevation = self.calculate_elevation(to=self.end)
             i = (elevation > self.water_levels).argmax()
-            self.total_subsidence = self.total_subsidence + (elevation[i] - self.elevation)
-            self.update(index=self.water_levels.index[i],
-                        water_level=self.water_levels[i], elevation=elevation[i])
+            # self.subsidence = self.subsidence + (elevation[i] - self.elevation)
+            self.update(index=self.water_levels.index[i], elevation=elevation[i] - self.elevation)
 
     def uninitialize(self) -> None:
-        self.results = pd.DataFrame.from_records(data=self.results, index="index").squeeze()
+        self.results = pd.DataFrame.from_records(data=self.results, index="index")
         self.pbar.close()
         self.logger.info('Simulation completed. Exiting.')
 
@@ -187,44 +213,84 @@ class Model:
             if not inundation.valid:
                 self.invalid_inundations.append(inundation)
 
-            self.total_subsidence = self.total_subsidence + (inundation.initial_elevation - self.elevation)
-            for record in inundation.result[['water_level', 'elevation']].reset_index().to_dict(orient='records'):
-                self.update(index=record['index'], water_level=record['water_level'],
-                            elevation=record['elevation'])
-            self.total_aggradation = self.total_aggradation + inundation.total_aggradation
-            self.total_subsidence = self.total_subsidence + inundation.total_subsidence
+            # self.subsidence = self.subsidence + (inundation.initial_elevation - self.elevation)
+            self.update(index=inundation.start, elevation=inundation.initial_elevation - self.elevation)
+            self.update(
+                index=inundation.end,
+                elevation=inundation.result.elevation[-1] - self.elevation,
+                aggradation=inundation.aggradation,
+                subsidence=inundation.subsidence,
+                hydroperiod=inundation.period,
+                num_inundations=1
+            )
+            # for record in inundation.result.elevation.reset_index().to_dict(orient='records'):
+            #     self.update(index=record['index'], elevation=record['elevation'])
+            # self.aggradation = self.aggradation + inundation.total_aggradation
+            # self.subsidence = self.subsidence + inundation.total_subsidence
+            # self.hydroperiod = self.hydroperiod + inundation.period
+            # self.num_inundations += 1
 
             if inundation.end == self.end:
                 self.logger.trace("No inunundations remaining.")
             else:
                 i = inundation.end + pd.Timedelta('1H')
                 elevation = self.calculate_elevation(at=i)
-                self.total_subsidence = self.total_subsidence + (elevation - self.elevation)
-                self.update(index=i, water_level=self.water_levels[i], elevation=elevation)
+                # self.subsidence = self.subsidence + (elevation - self.elevation)
+                self.update(index=i, elevation=elevation - self.elevation)
         else:
             self.logger.trace("No inunundations remaining.")
             elevation = self.calculate_elevation(at=self.end)
-            self.total_subsidence = self.total_subsidence - (self.elevation - elevation)
-            self.update(index=self.end, water_level=np.nan, elevation=elevation)
+            # self.subsidence = self.subsidence - (self.elevation - elevation)
+            self.update(index=self.end, elevation=elevation - self.elevation)
 
-    def run(self, end_date=None, period=None) -> None:
-        self.initialize(end_date, period)
-        while self.now < self.end:
+    def run(self, until=None) -> None:
+        if until:
+            until = pd.to_datetime(until)
+        else:
+            until = self.end
+        while self.now < until:
             self.step()
             new_n = round((self.now - self.start) / self.pbar_unit, 2)
             self.pbar.set_postfix({"Date": self.now.strftime("%Y-%m-%d"), "Elevation": self.elevation}, refresh=False)
             self.pbar.update(n=new_n - self.pbar.n)
-        self.uninitialize()
 
     def plot_results(self, freq="10T") -> None:
 
         # data = pd.concat([self.water_levels, self.results], axis=1).resample(freq).mean()
-        data = self.results.resample(freq).mean()
+        data = self.results.resample(freq).last()
+        data.loc[:, ['elevation', 'subsidence']] = data[['elevation', 'subsidence']].interpolate()
+        data.loc[:, ['aggradation', 'hydroperiod', 'num_inundations']
+                 ] = data[['aggradation', 'hydroperiod', 'num_inundations']].ffill()
+        # data['avg_hydroperiod'] = data.hydroperiod / data.num_inundations / pd.Timedelta('1H')
+        wl = self.water_levels.resample('1D').max().resample('MS').mean()
 
-        _, ax = plt.subplots(figsize=(13, 5), constrained_layout=True)
+        _, ax = plt.subplots(figsize=(13, 10), nrows=4, sharex=True)
 
-        sns.lineplot(data=data.water_level, color="cornflowerblue", alpha=0.6, ax=ax)
-        sns.lineplot(data=data.elevation, color="forestgreen", ax=ax)
+        sns.lineplot(data=wl, color="cornflowerblue", ax=ax[0], label='Monthly MHW')
+        sns.lineplot(data=data.elevation, color="black", ls='--', ax=ax[0], label='Elevation')
 
-        plt.xlim((data.index[0], data.index[-1]))
-        plt.ylim((data.elevation.min(), data.water_level.max()))
+        sns.lineplot(data=data.elevation - self.results.elevation[0],
+                     ls='--', color="black", ax=ax[1], label='Elevation')
+        sns.lineplot(data=data.aggradation, color="forestgreen", ax=ax[1], label='Aggradation')
+        sns.lineplot(data=data.subsidence, color="tomato", ax=ax[1], label='Subsidence')
+
+        sub = self.results[['hydroperiod', 'num_inundations']].groupby(pd.Grouper(freq='MS')).last()
+        idata = sub.diff()
+        idata.iloc[0] = sub.iloc[0]
+        sns.lineplot(data=idata.num_inundations, ax=ax[2], label='Monthly Inundations')
+        ax[2].axhline(y=data.num_inundations[-1] / (self.period / pd.Timedelta('365.25D') * 12), color='black', ls=':')
+
+        sns.lineplot(data=idata.hydroperiod / idata.num_inundations / pd.Timedelta('1H'), ax=ax[3], label='Monthly MHP')
+        ax[3].axhline(y=data.hydroperiod[-1] / data.num_inundations[-1] / pd.Timedelta('1H'), color='black', ls=':')
+
+        ax[0].set_ylabel('Elevation (m)')
+        ax[1].set_ylabel('$\Delta$ (m)')
+        ax[2].set_ylabel('# Inundations')
+        ax[3].set_ylabel('Mean Hydroperiod (h)')
+        ax[-1].set_xlabel('')
+
+        # for a in ax[:2]:
+        #     a.set_xlabel('')
+
+        # plt.xlim((data.index[0], data.index[-1]))
+        # plt.ylim((data.elevation.min(), data.water_level.max()))
