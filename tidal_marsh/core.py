@@ -200,7 +200,7 @@ class Model:
             self.update(index=self.water_levels.index[i], elevation=elevation[i] - self.elevation)
 
     def uninitialize(self) -> None:
-        self.results = pd.DataFrame.from_records(data=self.results, index="index")
+        self.results = pd.DataFrame.from_records(data=self.results, index="index").rename_axis(index='datetime')
         self.pbar.close()
         self.logger.info('Simulation completed. Exiting.')
 

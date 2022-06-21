@@ -1,10 +1,10 @@
 workspace:
   path: ./results
-  overwrite: False
+  overwrite: True
 
 cache:
   path: ./data/.cache/
-  rebuild: False
+  rebuild: True
 
 parallel:
   enabled: True
@@ -30,7 +30,7 @@ logging:
         serialize: True
 
 tides:
-  path: ./data/processed/tides_2020-2120.pickle
+  path: data/processed/tides_2014-2120.pickle
   slr:
     z2100: !!null #[0.3, 0.7, 1.1]
     a: 0.0
@@ -40,13 +40,14 @@ tides:
     k: [0.0] #[-10, -30, -50]
 
 platform:
-  initial_elevation: [2.3, 2.35, 2.4, 2.45, 2.5, 2.55, 2.6]
+  initial_elevation:
+    [2.1, 2.15, 2.2, 2.25, 2.3, 2.35, 2.4, 2.45, 2.5, 2.55, 2.6]
   channel_ssc: 0.5
   ssc: !!null
   trapping_efficiency: data/processed/calibrated_te.pickle
-  grain_diameter: [15.0e-6, 25.0e-6, 35.0e-6]
+  grain_diameter: 25.0e-6 # [15.0e-6, 25.0e-6, 35.0e-6]
   grain_density: 2.65e+3
-  bulk_density: [700, 1000, 1300]
-  organic_rate: [0.0, 0.5e-3, 1.0e-3]
-  compaction_rate: [-5.0e-3, -10.0e-3, -15.0e-3]
-  subsidence_rate: [-2.0e-3, -2.5e-3, -3.0e-3]
+  bulk_density: 1000 #[700, 1000, 1300]
+  organic_rate: 0 #[0.0, 0.5e-3, 1.0e-3]
+  compaction_rate: -7.0e-3 #[-5.0e-3, -10.0e-3, -15.0e-3]
+  subsidence_rate: 0 #[-2.0e-3, -2.5e-3, -3.0e-3]
