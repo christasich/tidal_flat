@@ -30,14 +30,11 @@ class Model:
     id: int = 0
     position: int = 0
     pbar_name: str = None
-    save_inundations: bool = field(repr=False, default=False)
+    save_inundation_objects: bool = field(repr=False, default=False)
 
     # auto initialize these fields
-    # aggradation: float = field(init=False, default=0.0)
-    # subsidence: float = field(init=False, default=0.0)
-    # hydroperiod: float = field(init=False, default=pd.to_timedelta('0H'))
-    # num_inundations: int = field(init=False, default=0)
     inundations: list = field(init=False, default_factory=list)
+    inundation_objects: list = field(init=False, default_factory=list)
     invalid_inundations: list = field(init=False, default_factory=list)
     results: pd.DataFrame = field(init=False, default_factory=list)
     start: pd.Timestamp = field(init=False)
@@ -54,12 +51,10 @@ class Model:
         self.logger = logger.patch(lambda record: record["extra"].update(model_time=self.now))
         self.elevation = initial_elevation
         init_result = {
-            'index': self.start,
+            'timestamp': self.start,
             'elevation': self.elevation,
             'aggradation': 0.0,
             'subsidence': 0.0,
-            'hydroperiod': pd.to_timedelta('0H'),
-            'num_inundations': 0
         }
         self.results.append(init_result)
         self.water_levels = self.water_levels.rename("water_level")
@@ -103,27 +98,67 @@ class Model:
             elapsed_seconds = (index - self.now).total_seconds()
             return (self.constant_rates * elapsed_seconds).values + self.elevation
 
-    def update(self, index, **kwargs) -> None:
+    def update(self, timestamp, delta) -> None:
         current = {
             'elevation': self.results[-1]['elevation'],
             'aggradation': self.results[-1]['aggradation'],
             'subsidence': self.results[-1]['subsidence'],
-            'hydroperiod': self.results[-1]['hydroperiod'],
-            'num_inundations': self.results[-1]['num_inundations']
         }
-        delta = {
+        change = {
+            'elevation': 0.0,
             'aggradation': 0.0,
-            'subsidence': kwargs['elevation'],
-            'hydroperiod': pd.to_timedelta('0H'),
-            'num_inundations': 0
+            'subsidence': 0.0,
         }
-        delta.update(kwargs)
-        result = {k: current.get(k, 0) + delta.get(k, 0) for k in set(current) | set(delta)}
-        result.update({'index': index})
+        change.update(delta)
+        result = {k: current.get(k, 0) + change.get(k, 0) for k in set(current) | set(change)}
+        result.update({'timestamp': timestamp})
         self.logger.trace(f"Updating results. New result={result}")
         self.results.append(result)
-        self.now = result['index']
+        self.now = result['timestamp']
         self.elevation = result['elevation']
+
+    def process_inundation(self, inundation):
+        self.update(
+            timestamp=inundation.start,
+            delta={
+                'elevation': inundation.initial_elevation - self.elevation,
+                'subsidence': inundation.initial_elevation - self.elevation
+            }
+        )
+        if self.save_inundation_objects:
+            self.inundation_objects.append(inundation)
+        inundation.integrate()
+        if not inundation.valid:
+            self.invalid_inundations.append(inundation)
+        result = {
+            'start': inundation.start,
+            'end': inundation.end,
+            'hydroperiod': inundation.period,
+            'aggradation': inundation.aggradation,
+            'subsidence': inundation.subsidence,
+            'elevation_change': inundation.result.elevation[-1] - inundation.result.elevation[0]
+        }
+        self.inundations.append(result)
+        self.update(
+            timestamp=inundation.end,
+            delta={
+                'elevation': inundation.result.elevation[-1] - self.elevation,
+                'aggradation': inundation.aggradation,
+                'subsidence': inundation.subsidence
+            }
+        )
+        if inundation.end == self.end:
+            self.logger.trace("No inunundations remaining.")
+        else:
+            i = inundation.end + pd.Timedelta('1H')
+            elevation = self.calculate_elevation(at=i)
+            self.update(
+                timestamp=i,
+                delta={
+                    'elevation': elevation - self.elevation,
+                    'subsidence': elevation - self.elevation
+                }
+            )
 
     def find_next_inundation(self) -> pd.DataFrame | None:
 
@@ -166,7 +201,9 @@ class Model:
             ssc_boundary=self.ssc,
             bulk_density=self.bulk_density,
             settling_rate=self.settling_rate,
-            constant_rates=self.constant_rates,
+            organic_rate=self.organic_rate / constants.YEAR,
+            compaction_rate=self.compaction_rate / constants.YEAR,
+            subsidence_rate=self.subsidence_rate / constants.YEAR,
             solve_ivp_opts=self.solve_ivp_opts,
         )
         return inundation
@@ -196,52 +233,24 @@ class Model:
             self.logger.debug(f"Tide starts above platform. Skipping first inundation.")
             elevation = self.calculate_elevation(to=self.end)
             i = (elevation > self.water_levels).argmax()
-            # self.subsidence = self.subsidence + (elevation[i] - self.elevation)
-            self.update(index=self.water_levels.index[i], elevation=elevation[i] - self.elevation)
+            delta = {'elevation': elevation[i] - self.elevation, 'subsidence': elevation[i] - self.elevation}
+            self.update(timestamp=self.water_levels.index[i], delta=delta)
 
     def uninitialize(self) -> None:
-        self.results = pd.DataFrame.from_records(data=self.results, index="index").rename_axis(index='datetime')
+        self.results = pd.DataFrame.from_records(data=self.results, index="timestamp").rename_axis(index='datetime')
+        self.inundations = pd.DataFrame.from_records(data=self.inundations).sort_values(by='start')
         self.pbar.close()
         self.logger.info('Simulation completed. Exiting.')
 
     def step(self) -> None:
         inundation = self.find_next_inundation()
         if inundation is not None:
-            if self.save_inundations:
-                self.inundations.append(inundation)
-            inundation.integrate()
-            if not inundation.valid:
-                self.invalid_inundations.append(inundation)
-
-            # self.subsidence = self.subsidence + (inundation.initial_elevation - self.elevation)
-            self.update(index=inundation.start, elevation=inundation.initial_elevation - self.elevation)
-            self.update(
-                index=inundation.end,
-                elevation=inundation.result.elevation[-1] - self.elevation,
-                aggradation=inundation.aggradation,
-                subsidence=inundation.subsidence,
-                hydroperiod=inundation.period,
-                num_inundations=1
-            )
-            # for record in inundation.result.elevation.reset_index().to_dict(orient='records'):
-            #     self.update(index=record['index'], elevation=record['elevation'])
-            # self.aggradation = self.aggradation + inundation.total_aggradation
-            # self.subsidence = self.subsidence + inundation.total_subsidence
-            # self.hydroperiod = self.hydroperiod + inundation.period
-            # self.num_inundations += 1
-
-            if inundation.end == self.end:
-                self.logger.trace("No inunundations remaining.")
-            else:
-                i = inundation.end + pd.Timedelta('1H')
-                elevation = self.calculate_elevation(at=i)
-                # self.subsidence = self.subsidence + (elevation - self.elevation)
-                self.update(index=i, elevation=elevation - self.elevation)
+            self.process_inundation(inundation)
         else:
             self.logger.trace("No inunundations remaining.")
             elevation = self.calculate_elevation(at=self.end)
-            # self.subsidence = self.subsidence - (self.elevation - elevation)
-            self.update(index=self.end, elevation=elevation - self.elevation)
+            delta = {'elevation': elevation - self.elevation, 'subsidence': elevation - self.elevation}
+            self.update(timestamp=self.end, delta=delta)
 
     def run(self, until=None) -> None:
         if until:

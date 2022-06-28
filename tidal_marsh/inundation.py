@@ -12,6 +12,7 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 from sklearn.utils import Bunch
 from . import utils
 
+
 @dataclass
 class Inundation:
     water_levels: pd.Series
@@ -19,7 +20,9 @@ class Inundation:
     ssc_boundary: float
     bulk_density: float
     settling_rate: float
-    constant_rates: float
+    organic_rate: float
+    compaction_rate: float
+    subsidence_rate: float
     solve_ivp_opts: dict
     depth_spl: InterpolatedUnivariateSpline = field(init=False)
     flood: OdeResult = field(init=False, default=None)
@@ -46,7 +49,9 @@ class Inundation:
             ssc_boundary=self.ssc_boundary,
             bulk_density=self.bulk_density,
             settling_rate=self.settling_rate,
-            constant_rates=self.constant_rates,
+            organic_rate=self.organic_rate,
+            compaction_rate=self.compaction_rate,
+            subsidence_rate=self.subsidence_rate
         )
 
     @staticmethod
@@ -57,7 +62,7 @@ class Inundation:
         d1dt_concentration = (
             -(params.settling_rate * concentration) / params.depth_spl(t) - 1 /
             params.depth_spl(t) * (concentration - params.ssc_boundary) * params.depth_spl.derivative()(t)
-            )
+        )
 
         return [d1dt_concentration, d1dt_aggradation]
 
@@ -83,12 +88,12 @@ class Inundation:
         self.logger.trace('Integrating ebb limb.')
         ebb_t_span = ((self.slack - self.start).total_seconds(), (self.end - self.start).total_seconds())
         self.ebb = solve_ivp(
-                fun=self.solve_ebb,
-                t_span=ebb_t_span,
-                y0=(self.flood.y[0][-1], self.flood.y[1][-1]),
-                args=[self.params],
-                **self.solve_ivp_opts,
-            )
+            fun=self.solve_ebb,
+            t_span=ebb_t_span,
+            y0=(self.flood.y[0][-1], self.flood.y[1][-1]),
+            args=[self.params],
+            **self.solve_ivp_opts,
+        )
         self.validate()
         self.concat_results()
 
@@ -110,10 +115,14 @@ class Inundation:
     def concat_results(self):
         time = np.append(self.flood.t, self.ebb.t[1:])
         concentration = np.append(self.flood.y[0], self.ebb.y[0, 1:])
-        aggradation = np.append(self.flood.y[1], self.ebb.y[1, 1:])
+        mineral_agg = np.append(self.flood.y[1], self.ebb.y[1, 1:])
+        organic_agg = (time - time[0]) * self.params.organic_rate
+        aggradation = mineral_agg + organic_agg
         depth = self.params.depth_spl(time)
         water_level = depth + self.initial_elevation
-        degradation = (time - time[0]) * self.params.constant_rates
+        compaction = (time - time[0]) * self.params.compaction_rate
+        subsidence = (time - time[0]) * self.params.subsidence_rate
+        degradation = compaction + subsidence
         elevation_change = aggradation + degradation
         index = self.start + pd.to_timedelta(time, unit='s')
         self.result = pd.DataFrame(
@@ -121,6 +130,10 @@ class Inundation:
                 "water_level": water_level,
                 "depth": depth,
                 "concentration": concentration,
+                "mineral_agg": mineral_agg,
+                "organic_agg": organic_agg,
+                "compaction": compaction,
+                "subsidence": subsidence,
                 "aggradation": aggradation,
                 "degradation": degradation,
                 "elevation_change": elevation_change,
@@ -157,7 +170,7 @@ class Inundation:
             data=self.result.elevation_change * 1000,
             label="Elevation Change",
             color='black', ls=':', ax=ax['d']
-            )
+        )
         ax['d'].set_ylabel(ylabel="Height (mm)")
         ax['d'].ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
 
