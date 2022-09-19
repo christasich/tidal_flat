@@ -134,6 +134,7 @@ class Model:
             'start': inundation.start,
             'end': inundation.end,
             'hydroperiod': inundation.period,
+            'depth': inundation.slack_depth,
             'aggradation': inundation.aggradation,
             'subsidence': inundation.subsidence,
             'elevation_change': inundation.result.elevation[-1] - inundation.result.elevation[0]
