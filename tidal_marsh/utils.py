@@ -1,3 +1,4 @@
+from . import constants
 import itertools as it
 import re
 from numbers import Number
@@ -19,8 +20,6 @@ from typing import Callable, ParamSpec, TypeVar
 T = TypeVar("T")
 P = ParamSpec("P")
 
-from . import constants
-
 
 def make_combos(**kwargs):
     """
@@ -30,10 +29,12 @@ def make_combos(**kwargs):
     for key, value in kwargs.items():
         if isinstance(value, (list, tuple)) is False:
             kwargs.update({key: [value]})
+        if isinstance(value, (np.ndarray)):
+            kwargs.update({key: value.tolist()})
     keys, values = zip(*kwargs.items())
     combos = [i for i in it.product(*values)]
-    # combos = [Bunch(id=i, **dict(zip(keys, combo))) for i, combo in enumerate(combos)]
-    combos = [Bunch(**dict(zip(keys, combo))) for combo in combos]
+    combos = [Bunch(pos=i, **dict(zip(keys, combo))) for i, combo in enumerate(combos)]
+    # combos = [Bunch(**dict(zip(keys, combo))) for combo in combos]
     return combos
 
 

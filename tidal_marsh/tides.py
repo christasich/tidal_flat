@@ -112,8 +112,11 @@ class Tides:
     data: pd.DataFrame = field(init=False)
 
     def __post_init__(self, water_levels: pd.Series) -> None:
+        self.update(water_levels=water_levels)
 
+    def update(self, water_levels):
         self.data = flag_extrema(data=water_levels, include_roll=True)
+        self.data['dt'] = (self.data.index - self.data.index[0]).values / pd.Timedelta("365.2425D")
         self.summary = summarize_tides(data=water_levels)
 
     @property
@@ -136,42 +139,67 @@ class Tides:
         neaps.columns = ["highs", "lows"]
         return neaps
 
-    def calc_amplification(
-        self,
-        beta: float | tuple[float, float] | pd.Series | tuple[pd.Series, pd.Series],
-        k: float | int,
-        benchmarks: tuple[str, str] = ["MHW", "MLW"],
-    ) -> pd.Series:
+    # def calc_amplification(
+    #     self,
+    #     beta: float | tuple[float, float] | pd.Series | tuple[pd.Series, pd.Series],
+    #     k: float | int,
+    #     benchmarks: tuple[str, str] = ["MHW", "MLW"],
+    # ) -> pd.Series:
 
-        t = (self.data.index - self.data.index[0]).values / pd.Timedelta("365.25D")
-        if isinstance(beta, int | float):
-            beta_high = k * (exponential(t=t, a=beta, k=k) - beta)
-            beta_low = -beta_high
-        elif isinstance(beta, tuple | list):
-            beta_high = k * (exponential(t=t, a=beta, k=k) - beta)
-            beta_low = k * (exponential(t=t, a=beta, k=k) - beta)
+    #     t = (self.data.index - self.data.index[0]).values / pd.Timedelta("365.2425D")
+    #     if isinstance(beta, int | float):
+    #         beta_high = k * (exponential(t=t, a=beta, k=k) - beta)
+    #         beta_low = -beta_high
+    #     elif isinstance(beta, tuple | list):
+    #         beta_high = k * (exponential(t=t, a=beta, k=k) - beta)
+    #         beta_low = k * (exponential(t=t, a=beta, k=k) - beta)
 
-        bench_high = self.summary[benchmarks[0]]
-        bench_low = self.summary[benchmarks[1]]
+    #     bench_high = self.summary[benchmarks[0]]
+    #     bench_low = self.summary[benchmarks[1]]
 
-        cond = self.data.elevation > self.summary.MSL
+    #     cond = self.data.elevation > self.summary.MSL
 
-        above = (self.data.elevation - self.summary.MSL) / (bench_high - self.summary.MSL) * beta_high
-        below = (self.data.elevation - self.summary.MSL) / (bench_low - self.summary.MSL) * beta_low
+    #     above = (self.data.elevation - self.summary.MSL) / (bench_high - self.summary.MSL) * beta_high
+    #     below = (self.data.elevation - self.summary.MSL) / (bench_low - self.summary.MSL) * beta_low
 
-        return below.mask(cond=cond, other=above)
+    #     return below.mask(cond=cond, other=above)
 
-    def calc_slr(self, z2100=None, a=None, b=None):
-        if z2100:
-            index = pd.date_range(start="2000", end=self.data.index[-1], freq=self.data.index.freq)
-            t = (index - index[0]).values / pd.Timedelta("365.25D")
-            a = (z2100 - b * 100) / 100 ** 2
-            slr = pd.Series(index=index, data=quadratic(t=t, a=a, b=b)).loc[self.data.index[0]:]
-            slr = slr - slr.iat[0]
+    def amplify_from_rate(self, rate, b, ref_date=None) -> pd.Series:
+
+        dt = self.data.dt
+        if not ref_date:
+            ref_date = self.data.index[0]
+            dt = dt - dt.at[ref_date]
         else:
-            t = (self.data.index - self.data.index[0]).values / pd.Timedelta("365.25D")
-            slr = pd.Series(index=self.data.index, data=quadratic(t=t, a=a, b=b))
+            ref_date = pd.to_datetime(ref_date)
+            dt = dt - dt.at[ref_date]
+
+        af = dt * rate + b
+        out = (self.data.elevation - self.summary.MSL) * af + self.summary.MSL
+
+        return out
+
+    def amplify_from_factor(self, af) -> pd.Series:
+
+        out = (self.data.elevation - self.summary.MSL) * af + self.summary.MSL
+
+        return out
+
+    def calc_slr(self, rate):
+        slr = quadratic(t=self.data.dt, a=0.0, b=rate)
         return slr
+
+    # def calc_slr(self, z2100=None, a=None, b=None):
+    #     if z2100:
+    #         index = pd.date_range(start="2000", end=self.data.index[-1], freq=self.data.index.freq)
+    #         t = (index - index[0]).values / pd.Timedelta("365.2425D")
+    #         a = (z2100 - b * 100) / 100 ** 2
+    #         slr = pd.Series(index=index, data=quadratic(t=t, a=a, b=b)).loc[self.data.index[0]:]
+    #         slr = slr - slr.iat[0]
+    #     else:
+    #         t = (self.data.index - self.data.index[0]).values / pd.Timedelta("365.2425D")
+    #         slr = pd.Series(index=self.data.index, data=quadratic(t=t, a=a, b=b))
+    #     return slr
 
     def plot(self, start: str = None, end: str = None, freq: str = None) -> None:
         if freq is None:
@@ -242,7 +270,7 @@ class Tides:
         df = pd.DataFrame(dict(zip(names, vals)))[vars]
 
         ref_date = self.data.index[0]
-        freq = pd.Timedelta("365.25D")
+        freq = pd.Timedelta("365.2425D")
 
         for var in vars:
             df.loc["lm", var], df.loc["coef", var], df.loc["intercept", var] = regress_ts(
