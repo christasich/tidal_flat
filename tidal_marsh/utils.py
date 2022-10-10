@@ -33,8 +33,8 @@ def make_combos(**kwargs):
             kwargs.update({key: value.tolist()})
     keys, values = zip(*kwargs.items())
     combos = [i for i in it.product(*values)]
-    combos = [Bunch(pos=i, **dict(zip(keys, combo))) for i, combo in enumerate(combos)]
-    # combos = [Bunch(**dict(zip(keys, combo))) for combo in combos]
+    # combos = [Bunch(pos=i, **dict(zip(keys, combo))) for i, combo in enumerate(combos)]
+    combos = [Bunch(**dict(zip(keys, combo))) for combo in combos]
     return combos
 
 
@@ -99,7 +99,7 @@ def lowess_ts(data: pd.Series, window: pd.Timedelta = None):
 
 
 def quadratic(t, a=0, b=0, c=0):
-    return a * t ** 2 + b * t + c
+    return a * t**2 + b * t + c
 
 
 def exponential(t, a, k):
@@ -125,7 +125,7 @@ def datetime2num(t: pd.Timestamp) -> float | np.ndarray:
     except AttributeError:
         pass
     try:
-        return (t.astype(np.int64) / 10 ** 9).values
+        return (t.astype(np.int64) / 10**9).values
     except:
         raise ValueError("t must be a pd.Timestamp or pd.DatetimeIndex.")
 

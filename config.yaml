@@ -1,14 +1,14 @@
 workspace:
   path: ./results
-  overwrite: True
+  overwrite: False
 
 cache:
-  path: ./data/.cache/
-  rebuild: True
+  path: ./data/.cache/4-delta
+  rebuild: False
 
 parallel:
   enabled: True
-  max_cores: 72
+  max_cores: 60
 
 logging:
   enabled: True
@@ -30,24 +30,17 @@ logging:
         serialize: True
 
 tides:
-  path: data/processed/tides_2014-2120.pickle
-  slr:
-    z2100: !!null #[0.3, 0.7, 1.1]
-    a: 0.0
-    b: 0.003
-  amp:
-    beta: [0.0] #[0.0015, 0.0075, 0.0]
-    k: [0.0] #[-10, -30, -50]
+  path: data/processed/tides_1960-2052.pickle
+  params:
+    rslr: [0.000, 0.002, 0.004, 0.006, 0.008, 0.010]
+    mtr: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 platform:
-  initial_elevation:
-    [2.1, 2.15, 2.2, 2.25, 2.3, 2.35, 2.4, 2.45, 2.5, 2.55, 2.6]
-  channel_ssc: 0.5
-  ssc: !!null
-  trapping_efficiency: data/processed/calibrated_te.pickle
+  initial_elevation: 1.0
+  ssc: [0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
   grain_diameter: 25.0e-6 # [15.0e-6, 25.0e-6, 35.0e-6]
   grain_density: 2.65e+3
   bulk_density: 1000 #[700, 1000, 1300]
   organic_rate: 0 #[0.0, 0.5e-3, 1.0e-3]
-  compaction_rate: -7.0e-3 #[-5.0e-3, -10.0e-3, -15.0e-3]
+  compaction_rate: 0 #[-5.0e-3, -10.0e-3, -15.0e-3]
   subsidence_rate: 0 #[-2.0e-3, -2.5e-3, -3.0e-3]
