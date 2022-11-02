@@ -27,10 +27,8 @@
 		"explorerExclude.backup": null,
 		"jupyter.jupyterServerType": "local",
 		"jupyter.disableJupyterAutoStart": false,
-		"python.analysis.completeFunctionParens": true,
 		"jupyter.allowUnauthorizedRemoteConnection": true,
 		"python.linting.flake8Enabled": true,
-		"python.linting.enabled": true,
 		"jupyter.notebookFileRoot": "${workspaceFolder}",
 		"python.linting.mypyEnabled": true,
 		"python.formatting.blackArgs": [

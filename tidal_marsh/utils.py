@@ -7,18 +7,26 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-import yaml
 from loguru import logger
 from scipy.signal import find_peaks
 from sklearn.linear_model import LinearRegression
 from sklearn.utils import Bunch
-import json
-from types import SimpleNamespace
-import random
 from typing import Callable, ParamSpec, TypeVar
 
 T = TypeVar("T")
 P = ParamSpec("P")
+
+
+def normalize_timeseries(ts, freq="T"):
+
+    norm_index = pd.date_range(ts.index[0].floor(freq), ts.index[-1].ceil(freq), freq=freq)
+
+    ts = pd.concat([ts, pd.DataFrame(columns=ts.columns, index=norm_index)])
+    ts = ts[~ts.index.duplicated()].sort_index()
+    ts = ts.interpolate(method="time", limit_area="inside")
+    ts = ts.loc[norm_index].dropna()
+
+    return ts
 
 
 def make_combos(**kwargs):
@@ -68,14 +76,19 @@ def search_file(wdir, filename):
     return found
 
 
-def find_pv(data: pd.Series, window: str):
+def find_pv(data: pd.Series, distance=None):
 
-    distance = pd.Timedelta(window) / pd.Timedelta(data.index.freq)
+    if isinstance(distance, str):
+        freq = pd.tseries.frequencies.to_offset(data.index.inferred_freq)
+        distance = pd.to_timedelta(distance) / pd.to_timedelta(freq)
 
     peaks_iloc = find_peaks(x=data, distance=distance)[0]
     valleys_iloc = find_peaks(x=data * -1, distance=distance)[0]
 
-    return (data.iloc[peaks_iloc], data.iloc[valleys_iloc])
+    return (
+        data.iloc[peaks_iloc].rename("elevation").rename_axis("datetime"),
+        data.iloc[valleys_iloc].rename("elevation").rename_axis("datetime"),
+    )
 
 
 def regress_ts(ts: pd.Series, freq: str, ref_date: str | pd.Timestamp):

@@ -23,8 +23,8 @@ import json
 
 from . import tides
 from . import utils
-from .core import Model
-from .tides import Tides, load_tides, find_pv
+from .model import Model
+from .tides import Tides, find_pv
 
 hostname = socket.gethostname()
 
@@ -136,8 +136,8 @@ def simulate(
         mtr = float(tide.split("/")[-1].split("_")[0].split("-")[1])
         rslr = float(tide.split("/")[-1].split("_")[1].split("-")[1][:5])
         model = Model(
-            water_levels=pd.read_pickle(tide),
-            initial_elevation=initial_elevation,
+            tides=pd.read_pickle(tide),
+            init_elevation=initial_elevation,
             ssc=ssc,
             grain_diameter=grain_diameter,
             grain_density=grain_density,
@@ -152,14 +152,14 @@ def simulate(
         model.initialize()
         model.run()
         model.uninitialize()
-        model.results.to_csv(wdir / "raw" / f"{id:04}.csv")
+        model.platform.to_csv(wdir / "raw" / f"{id:04}.csv")
         processed = process_results(model)
         processed["mtr"] = mtr
         processed["ssc"] = ssc
         processed["rslr"] = rslr
         processed.to_csv(wdir / "processed" / f"{id:04}.csv")
-        if len(model.invalid_inundations) > 0:
-            for i in model.invalid_inundations:
+        if len(model._cycles_invalid) > 0:
+            for i in model._cycles_invalid:
                 del i.logger
                 name = f"{id:04}_{i.start:%Y-%m-%d}.pickle"
                 with open(wdir / "invalid" / name, "wb") as f:

@@ -27,8 +27,8 @@ def run(mtr, ssc, rslr, grain_diameter, grain_density, bulk_density, pos):
     initial_elevation = tides.summary.MSL
 
     model = tm.Model(
-        water_levels=tides.data.elevation,
-        initial_elevation=initial_elevation,
+        tides=tides.data.elevation,
+        init_elevation=initial_elevation,
         ssc=ssc,
         grain_diameter=grain_diameter,
         grain_density=grain_density,
