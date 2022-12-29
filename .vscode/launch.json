@@ -9,8 +9,9 @@
             "type": "python",
             "request": "launch",
             "program": "${file}",
-            "justMyCode": false,
             "console": "integratedTerminal",
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}",
             "subProcess": true,
         }
     ]

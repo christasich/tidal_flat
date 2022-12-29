@@ -1,135 +1,169 @@
 from __future__ import annotations
-from dataclasses import InitVar, dataclass, field
+
+# from loguru import logger
+import importlib.resources as pkg_resources
 from copy import deepcopy
+from dataclasses import InitVar, dataclass, field
 
 import numpy as np
 import pandas as pd
-from loguru import logger
-import importlib.resources as pkg_resources
-
-from .utils import find_pv
-from .inundation import Inundation
-
 from scipy.interpolate import PchipInterpolator
+from scipy.signal import detrend
+
+from .constants import YEAR
+from .inundation import Inundation
+from .utils import find_pv
 
 
-# @dataclass
-# class Cycle:
-#     cycle_id: int
-#     water_levels: pd.Series
-#     start: pd.Timestamp = field(init=False)
-#     end: pd.Timestamp = field(init=False)
-#     slack: pd.Series = field(init=False)
-#     period: pd.Timedelta = field(init=False)
-#     inundation: Inundation = None
+@dataclass
+class Cycle:
+    cycle_n: int
+    water_levels: pd.Series
+    start: pd.Timestamp = field(init=False)
+    end: pd.Timestamp = field(init=False)
+    period: pd.Timedelta = field(init=False)
+    inundation: None | Inundation = field(init=False, default=None)
 
-#     def __post_init__(self) -> None:
-#         self.start = self.water_levels.index[0]
-#         self.end = self.water_levels.index[-1]
-#         self.period = self.end - self.start
-#         self.lows = self.water_levels.iloc[[0, -1]]
-#         self.high = self.water_levels.iloc[[self.water_levels.argmax()]].reset_index().squeeze().rename("high")
+    def __post_init__(self) -> None:
+        self.start = self.water_levels.index[0]
+        self.end = self.water_levels.index[-1]
+        self.period = self.end - self.start
 
-# def find_inundation(self, elevation: float) -> Inundation:
-#     depth = PchipInterpolator(
-#         x=self.water_levels.index.astype(int) / 10**9,
-#         y=self.water_levels.values - elevation,
-#         extrapolate=False,
-#     )
-#     roots = depth.roots()
-#     if roots.size == 2:
-#         r1 = roots[0] + 1
-#         r2 = roots[1] - 1
-#     elif roots.size == 1:
-#         if roots[0] < self.high.datetime.timestamp():
-#             r1 = roots[0] + 1
-#             r2 = self.water_levels.index[-1].timestamp()
-#         else:
-#             r1 = self.water_levels.index[0].timestamp()
-#             r2 = roots[0] - 1
-#     elif roots.size == 0 and (self.water_levels > elevation).all():
-#         r1 = self.water_levels.index[0].timestamp()
-#         r2 = self.water_levels.index[-1].timestamp()
-#     start = pd.to_datetime(r1, unit="s", origin="unix", utc=True).tz_convert(self.water_levels.index.tz)
-#     end = pd.to_datetime(r2, unit="s", origin="unix", utc=True).tz_convert(self.water_levels.index.tz)
+    def make_depth_func(self, elevation: float) -> PchipInterpolator:
+        x = (self.water_levels.index - self.water_levels.index[0]).total_seconds()
+        y = self.water_levels - elevation
+        return PchipInterpolator(x=x, y=y, extrapolate=False)
 
-#     return Inundation(depth=depth, start=start, end=end)
+    def find_inundation(self, elevation: float) -> None:
+        depth = self.make_depth_func(elevation)
+        start, mid, end = self.find_roots(depth)
+
+        self.inundation = Inundation(
+            depth=depth, start=start, mid=mid, end=end, time_ref=self.start, cycle_n=self.cycle_n
+        )
+
+    def find_roots(self, depth: PchipInterpolator) -> tuple[pd.Timedelta, ...]:
+        roots = depth.roots()
+        roots_d1dt = depth.derivative().roots()
+        i = roots_d1dt[depth(roots_d1dt).argmax()]
+        mid = pd.Timedelta(i, unit="s")
+        if roots.size == 2:
+            start = pd.Timedelta(roots[0] + 1, unit="s")
+            end = pd.Timedelta(roots[1] - 1, unit="s")
+        elif roots.size == 1:
+            if roots[0] < i:
+                start = pd.Timedelta(roots[0] + 1, unit="s")
+                end = self.end - self.start
+            else:
+                start = pd.Timedelta(0)
+                end = pd.Timedelta(roots[0] - 1, unit="s")
+        elif roots.size == 0:
+            start = pd.Timedelta(0)
+            end = self.end - self.start
+
+        return (start, mid, end)
 
 
 @dataclass
 class Tides:
-    water_levels: pd.Series
-    highs: pd.Series = field(init=False)
-    lows: pd.Series = field(init=False)
-    start: pd.Timestamp = field(init=False)
-    end: pd.Timestamp = field(init=False)
-    period: pd.Timedelta = field(init=False)
+    series: InitVar[pd.Series]
+    data: pd.DataFrame = field(init=False)
     cycles: pd.DataFrame = field(init=False)
-    summary: pd.DataFrame = field(init=False)
-    slr: float = 0.0
-    amp_factor: float = 0.0
+    datums: pd.DataFrame = field(init=False)
 
-    def __post_init__(self) -> None:
-        self.water_levels = self.water_levels.rename("water_levels").rename_axis(index="datetime")
-        highs, lows = find_pv(data=self.water_levels, distance="8H")
-        self.low_locs = lows.index
-        self.high_locs = highs.loc[lows.index[0] : lows.index[-1]].index
-        self.water_levels = self.water_levels.loc[lows.index[0] : lows.index[-1]]
+    @property
+    def start(self) -> pd.Timestamp:
+        return self.data.index[0]
 
-        self.start = self.water_levels.index[0]
-        self.end = self.water_levels.index[-1]
-        self.period = self.end - self.start
+    @property
+    def end(self) -> pd.Timestamp:
+        return self.data.index[-1]
+
+    @property
+    def period(self) -> pd.Timedelta:
+        return self.end - self.start
+
+    @property
+    def freq(self) -> pd.DateOffset:
+        return self.data.index.freq
+
+    @property
+    def levels(self) -> pd.Series:
+        return self.data.levels
+
+    @property
+    def lows(self) -> pd.Series:
+        return self.levels[self.data.low]
+
+    @property
+    def highs(self) -> pd.Series:
+        return self.levels[self.data.high]
+
+    def __post_init__(self, series: pd.Series) -> None:
+        highs, lows = find_pv(data=series, distance="8H")
+        highs = highs.loc[lows.index[0] : lows.index[-1]]
+        self.data = series.loc[lows.index[0] : lows.index[-1]].to_frame(name="levels").rename_axis(index="datetime")
+        self.data["low"] = self.data.index.isin(lows.index)
+        self.data["high"] = self.data.index.isin(highs.index)
         self.update()
+
+    def update(self) -> None:
+        self.cycles = self.describe_cycles()
+        self.datums = self.summarize()
+
+    def describe_cycles(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            data={
+                "start": self.lows.index[:-1],
+                "slack": self.highs.index,
+                "end": self.lows.index[1:],
+                "period": self.lows.index[1:] - self.lows.index[:-1],
+                "high": self.highs.values,
+                "low1": self.lows.iloc[:-1].values,
+                "low2": self.lows.iloc[1:].values,
+                "range1": self.highs.values - self.lows.iloc[:-1].values,
+                "range2": self.highs.values - self.lows.iloc[1:].values,
+            },
+        ).rename_axis("cycle")
 
     def raise_sea_level(self, slr: float) -> Tides:
         copy = deepcopy(self)
-        copy.slr = slr
-        years = (self.water_levels.index - self.start) / pd.to_timedelta("365.2425D")
-        copy.water_levels += slr * years
+        copy.data.levels += slr * (self.data.index - self.start) / YEAR
         copy.update()
         return copy
 
-    def amplify(self, factor: float) -> None:
+    def amplify(self, factor: float) -> Tides:
         copy = deepcopy(self)
-        copy.amp_factor = factor
-        copy.water_levels = (copy.water_levels - copy.water_levels.mean()) * factor + copy.water_levels.mean()
+        detrended = detrend(copy.data.levels)
+        trend = copy.data.levels - detrended
+        copy.data.levels = detrended * factor + trend
         copy.update()
         return copy
 
-    def update(self):
-        self.highs = self.water_levels.loc[self.high_locs]
-        self.lows = self.water_levels.loc[self.low_locs]
-        self.cycles = pd.DataFrame(
-            data={
-                "start": self.low_locs[:-1],
-                "slack": self.high_locs,
-                "end": self.low_locs[1:],
-                "period": self.low_locs[1:] - self.low_locs[:-1],
-                "low1": self.lows.iloc[:-1].values,
-                "high": self.highs.values,
-                "low2": self.lows.iloc[1:].values,
-            },
-        ).rename_axis("cycle")
-        self.cycles["range"] = self.cycles.high - (self.cycles.low1 + self.cycles.low2) / 2
-        self.summary = summarize_tides(data=self.water_levels)
+    def subset(self, start: str | None = None, end: str | None = None) -> Tides:
+        copy = deepcopy(self)
+        i = copy.data.loc[start:end].low.idxmax()
+        ii = copy.data.loc[start:end].low[::-1].idxmax()
+        copy.data = copy.data.loc[i:ii]
+        copy.update()
+        return copy
 
-        # def make_cycle(self, n: int) -> pd.Series:
-        #     cycle = self.cycles.loc[n]
-        #     return Cycle(cycle_id=n, water_levels=self.water_levels.loc[cycle.start : cycle.end])
+    def make_cycle(self, n: int) -> Cycle:
+        cycle = self.cycles.loc[n]
+        return Cycle(cycle_n=n, water_levels=self.levels.loc[cycle.start : cycle.end])
 
-    def summarize(self, freq="A", start=None, end=None) -> pd.DataFrame:
-        if start is None:
-            start = self.start
-        if end is None:
-            end = self.end
-        return self.water_levels.loc[start:end].resample(freq).apply(summarize_tides).unstack()
+    def summarize(self, freq: str | None = None) -> pd.Series:
+        if freq:
+            return self.levels.resample(freq).apply(summarize_tides).unstack()
+        else:
+            return summarize_tides(data=self.levels)
 
 
 def summarize_tides(data: pd.Series) -> pd.Series:
     # used NOAA definitions - https://tidesandcurrents.noaa.gov/datum_options.html
     # also included spring and neap mean levels
 
-    index = ["HAT", "MHHW", "MHW", "MTL", "MSL", "MLW", "MLLW", "LAT", "MN", "MSHW", "MSLW", "MNHW", "MNLW"]
+    datums = ["HAT", "MHHW", "MHW", "MTL", "MSL", "MLW", "MLLW", "LAT", "MN", "MSHW", "MSLW", "MNHW", "MNLW"]
 
     msl = data.mean()
     hat = data.max()
@@ -168,4 +202,4 @@ def summarize_tides(data: pd.Series) -> pd.Series:
 
     vals = [hat, mhhw, mhw, mtl, msl, mlw, mllw, lat, mn, mshw, mslw, mnhw, mnlw]
 
-    return pd.Series(data=vals, index=index)
+    return pd.Series(data=vals, index=datums).rename_axis("datums")

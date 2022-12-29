@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field, InitVar
-import numpy as np
+from dataclasses import InitVar, dataclass, field
 
+import numpy as np
 import pandas as pd
 import seaborn as sns
 from loguru import logger
@@ -13,39 +13,19 @@ from sklearn.utils import Bunch
 @dataclass
 class Inundation:
     depth: PchipInterpolator
-    start: pd.Timestamp
-    end: pd.Timestamp
-    flood: pd.Series = field(init=False)
-    ebb: pd.Series = field(init=False)
-    slack: pd.Series = field(init=False)
+    start: pd.Timedelta
+    mid: pd.Timedelta
+    end: pd.Timedelta
+    time_ref: pd.Timestamp
+    cycle_n: int
     hydroperiod: pd.Timedelta = field(init=False)
     solve_ivp_kwargs: dict = field(init=False, default_factory=dict)
     result: pd.DataFrame = field(init=False, default=None)
-    aggradation: float = 0.0
-    valid: bool = False
+    valid: bool = field(init=False, default=False)
 
     def __post_init__(self):
         self.logger = logger.bind(model_time=self.start)
         self.hydroperiod = self.end - self.start
-
-        d1dt_roots = self.depth.derivative().roots()
-        i = self.depth(d1dt_roots).argmax()
-        t = pd.to_datetime(d1dt_roots[i], unit="s", origin="unix", utc=True).tz_convert(self.start.tz)
-        self.slack = pd.Series(
-            data=[t, self.depth(d1dt_roots[i])],
-            index=["datetime", "depth"],
-        )
-
-        self.flood = pd.Series(
-            data=[self.start, self.slack.datetime, self.slack.datetime - self.start],
-            index=["start", "end", "period"],
-            name="flood",
-        )
-        self.ebb = pd.Series(
-            data=[self.slack.datetime, self.end, self.end - self.slack.datetime],
-            index=["start", "end", "period"],
-            name="ebb",
-        )
         self.solve_ivp_kwargs = {
             "method": "RK45",
             "dense_output": False,
@@ -55,13 +35,57 @@ class Inundation:
             "atol": 1e-6,
         }
 
+    @property
+    def slack(self) -> pd.Series:
+        return pd.Series(
+            data=[self.mid, self.depth(self.mid.total_seconds()).item()],
+            index=["time", "depth"],
+        )
+
+    @property
+    def flood(self) -> pd.Series:
+        return pd.Series(
+            data=[self.start, self.slack.time, self.slack.time - self.start],
+            index=["start", "end", "period"],
+            name="flood",
+        )
+
+    @property
+    def ebb(self) -> pd.Series:
+        return pd.Series(
+            data=[self.slack.time, self.end, self.end - self.slack.time],
+            index=["start", "end", "period"],
+            name="ebb",
+        )
+
+    @property
+    def aggradation(self):
+        return self.result.aggradation.iat[-1] if self.result is not None else None
+
+    @property
+    def summary(self) -> pd.DataFrame:
+        return pd.Series(
+            data={
+                "start": self.start + self.time_ref,
+                "end": self.end + self.time_ref,
+                "hydroperiod": self.hydroperiod,
+                "aggradation": self.aggradation,
+                "max_depth": self.slack.depth,
+                "mean_depth": self.depth(
+                    np.linspace(self.start.total_seconds(), self.end.total_seconds(), 1000)
+                ).mean(),
+                "valid": self.valid,
+            },
+            name=self.cycle_n,
+        )
+
     @staticmethod
-    def solve_flood(t, y, depth, ssc_boundary, bulk_density, settling_rate):
+    def solve_flood(t, y, depth, ssc, bulk_density, settling_rate):
         concentration = y[0]
 
         d1dt_aggradation = settling_rate * concentration / bulk_density
         d1dt_concentration = -(settling_rate * concentration) / depth(t) - 1 / depth(t) * (
-            concentration - ssc_boundary
+            concentration - ssc
         ) * depth.derivative()(t)
 
         return [d1dt_concentration, d1dt_aggradation]
@@ -75,19 +99,17 @@ class Inundation:
 
         return [d1dt_concentration, d1dt_aggradation]
 
-    def integrate(self, ssc_boundary, bulk_density, settling_rate, solve_ivp_kwargs=None):
+    def solve(self, ssc, bulk_density, settling_rate, solve_ivp_kwargs=None):
         if solve_ivp_kwargs is not None:
             self.solve_ivp_kwargs |= solve_ivp_kwargs
 
         self.logger.trace("Integrating flood limb.")
-        params = Bunch(
-            depth=self.depth, ssc_boundary=ssc_boundary, bulk_density=bulk_density, settling_rate=settling_rate
-        )
+        params = Bunch(depth=self.depth, ssc=ssc, bulk_density=bulk_density, settling_rate=settling_rate)
         flood = solve_ivp(
             fun=self.solve_flood,
-            t_span=[self.flood.start.timestamp(), self.flood.end.timestamp()],
+            t_span=[self.flood.start.total_seconds(), self.flood.end.total_seconds()],
             y0=(0.0, 0.0),
-            args=[params.depth, params.ssc_boundary, params.bulk_density, params.settling_rate],
+            args=[params.depth, params.ssc, params.bulk_density, params.settling_rate],
             **self.solve_ivp_kwargs,
         )
         flood.params = params
@@ -96,7 +118,7 @@ class Inundation:
         self.logger.trace("Integrating ebb limb.")
         ebb = solve_ivp(
             fun=self.solve_ebb,
-            t_span=[self.ebb.start.timestamp(), self.ebb.end.timestamp()],
+            t_span=[self.ebb.start.total_seconds(), self.ebb.end.total_seconds()],
             y0=(flood.y[0][-1], flood.y[1][-1]),
             args=[params.depth, params.bulk_density, params.settling_rate],
             **self.solve_ivp_kwargs,
@@ -107,7 +129,6 @@ class Inundation:
             self.valid = True
 
         self.concat_results(flood, ebb)
-        self.aggradation = self.result.aggradation.iat[-1]
 
     def validate(self, result) -> None:
         result.valid = True
@@ -117,7 +138,7 @@ class Inundation:
         if (result.y[1] < 0.0).any():
             result.valid = False
             self.logger.warning("Solution contains negative aggradations.")
-        if result.y[1][-1] > self.slack.depth * result.params.ssc_boundary:
+        if result.y[1][-1] > self.slack.depth * result.params.ssc:
             result.valid = False
             self.logger.warning("More sediment extracted than possible.")
 
@@ -126,7 +147,7 @@ class Inundation:
         concentration = np.append(flood.y[0], ebb.y[0, 1:])
         aggradation = np.append(flood.y[1], ebb.y[1, 1:])
         depth = self.depth(time)
-        index = pd.to_datetime(time, unit="s", origin="unix", utc=True).tz_convert(self.start.tz)
+        index = pd.to_timedelta(time, unit="s")
         self.result = pd.DataFrame(
             data={
                 "depth": depth,
@@ -136,26 +157,16 @@ class Inundation:
             index=index,
         )
 
-    def summarize(self):
-        return pd.Series(
-            data={
-                "start": self.start,
-                "end": self.end,
-                "hydroperiod": self.hydroperiod,
-                "aggradation": self.aggradation,
-                "depth": self.slack.depth,
-                "valid": self.valid,
-            }
-        )
-
     def plot(self):
 
         mosaic = [["e", "i"], ["c", "i"], ["d", "i"]]
 
         fig, ax = plt.subplot_mosaic(mosaic=mosaic, figsize=(12, 8), sharex=True, gridspec_kw={"width_ratios": [5, 2]})
 
-        index = pd.date_range(self.flood.start, self.ebb.end, freq="10S")
-        values = self.depth(index.astype(int) / 10**9)
+        # index = pd.date_range(self.flood.start, self.ebb.end, freq="10S")
+        index = pd.timedelta_range(self.flood.start, self.ebb.end, freq="10S")
+        # values = self.depth(index.astype(int) / 10**9)
+        values = self.depth(index.total_seconds())
         # values = self.params.depth_spl((index - self.start).total_seconds().values) + self.initial_elevation
         # water_levels = pd.Series(data=values, index=index)
         sns.lineplot(x=index, y=values, color="cornflowerblue", label="Tide", ax=ax["e"])
@@ -186,11 +197,11 @@ class Inundation:
 
         for v in ["e", "c", "d"]:
             a = ax[v]
-            a.axvline(self.slack.datetime, color="black", linestyle="--")
+            a.axvline(self.slack.time / pd.Timedelta(1, unit="ns"), color="black", linestyle="--")
             a.ticklabel_format(axis="y", useOffset=False)
 
         ax["i"].table(cellText=info.values, rowLabels=info.index, cellLoc="center", bbox=[0.25, 0.25, 0.5, 0.5])
         ax["i"].axis("off")
 
-        ax["e"].text(x=self.slack.datetime, y=ax["e"].get_ylim()[1], s="slack", ha="center")
+        ax["e"].text(x=self.slack.time / pd.Timedelta(1, unit="ns"), y=ax["e"].get_ylim()[1], s="slack", ha="center")
         plt.xticks(rotation=45)
