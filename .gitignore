@@ -181,6 +181,7 @@ bak/
 .archive/
 data/
 notebooks/
+figures/
 
 
 archive.tar.gz
