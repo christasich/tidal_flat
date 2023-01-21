@@ -18,7 +18,7 @@ where $`\zeta(t)`$ is the water-surface elevation and $\eta(t)`$ is the sediment
 \frac{d\eta(t)}{dt} = \frac{dS_m(t)}{dt} + \frac{dS_o(t)}{dt} + \frac{dP(t)}{dt} + \frac{dM(t)}{dt}
 ```
 
-The full description can be found  (...).
+The full description is described in Chris Tasich's dissertation and will be published soon.
 
 ### Source code
 
@@ -108,7 +108,7 @@ model.run()
 and calculate the results with
 
 ```python
-results = model.summarize(
+results = model.summarize()
 ```
 
 The `results` returns two dataframes in `Bunch` object. `results.platform` shows the annual total aggradation, total subsidence, total net surface elevation change, and final surface elevation. `results.inundations` shows the characteristics of each inundation along with a few diagnostic variables.
