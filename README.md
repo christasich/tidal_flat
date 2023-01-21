@@ -49,7 +49,7 @@ The tides class has some useful functions like summarize which calculates the ti
 annual = tides.summarize(freq='A')
 ```
 
-There are also functions to amplify the tides and change sea level.
+There are also functions to change sea level, amplify the tides, or take slices of the data.
 
 ```python
 tides = tides.raise_sea_level(slr=0.005)
@@ -57,7 +57,7 @@ tides = tides.amplify(af=1.5)
 tides = tides.subset(start='2023', end='2033')
 ```
 
-Each functions returns a copy of your tide object. We first raise sea level by $`5 mm \cdot yr^{-1}`$, then amplify the tides by a factor of $`1.5`$, and finally take a subset of the data from 2020 to 2030. This is useful for modeling changes to the tides or sample subsets without having to rebuild or reload them from scratch!
+Each functions returns a copy of your tide object. We first raise sea level by $`5 mm \cdot yr^{-1}`$, then amplify the tides by a factor of $`1.5`$, and finally take a subset of the data from 2020 to 2030. This is useful for modeling changes to the tides or sampling subsets without having to rebuild or reload them from scratch!
 
 Finally, we initialize our platform.
 
