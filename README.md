@@ -22,18 +22,22 @@ The full description is described in Chris Tasich's dissertation and will be pub
 
 ### Source code
 
-This project was built with `Python 3.10.9` using [Poetry](https://python-poetry.org/) to resolve dependencies.
+This project was built with `Python 3.10.9` using [Poetry](https://python-poetry.org/) to resolve dependencies. This project also requires [Git LFS](https://git-lfs.com/) which needs to be installed before cloning. You can install this with
 
-Use git to clone this repository into your computer.
+```sh
+git lfs install
+```
+
+Afterwards, use git to clone this repository into your computer.
 
 ```sh
 git clone https://gitlab.jgilligan.org/chris/tidal_flat.git
-cd tidal_flat/
 ```
 
 Then inside the cloned repository, the environment can be built with
 
 ```sh
+cd tidal_flat/
 poetry install
 ```
 
