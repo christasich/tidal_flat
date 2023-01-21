@@ -20,21 +20,62 @@ where $`\zeta(t)`$ is the water-surface elevation and $\eta(t)`$ is the sediment
 
 The full description can be found here.
 
-### Install
+### Source code
 
 Use git to clone this repository into your computer.
 
 ```
 git clone https://gitlab.jgilligan.org/chris/tidal_platform.git
 ```
-
+https://tidesandcurrents.noaa.gov/datum_options.html
 ### Usage
 
-...
+Import the module and dependencies.
+
+```python
+    import pandas as pd
+    import tidal_flat as tf
+```
+
+Load a tidal time series into pandas. The time series must have a defined frequency or one that can be infered from the data.
+
+```python
+    tides = tf.Tides(data)
+```
+
+The tides class has some useful functions like summarize which calculates the tidal datums defined by [NOAA](https://tidesandcurrents.noaa.gov/datum_options.html). You can specify a frequency string to calculate at different intervals.
+
+```python
+    annual = tides.summarize(freq='A')
+```
+
+There are also functions to amplify the tides and change sea level.
+
+```python
+    tides = tides.raise_sea_level(slr=0.005)
+    tides = tides.amplify(af=1.5)
+    tides = tides.subset(start='2020', end='2030')
+```
+
+Each functions returns a copy of your tide object. We first raise sea level by $`5 mm \cdot yr^{-1}`$, then amplify the tides by a factor of $`1.5`$, and finally take a subset of the data from 2020 to 2030. This is useful for modeling changes to the tides or sample subsets without having to rebuild or reload them from scratch!
+
+Finally, we initialize our platform.
+
+```python
+    platform = tf.platform.Platform(time_ref=tides.start, elevation_ref=0.0)
+```
+
+The platform class mostly keeps track of the history of the platform. We have to evolve it before it can really tell us anything interesting! We can then run our model by passing the tides and platform to our model class along with a handful of parameters.
+
+```python
+
+```
+
 
 ## License
 
-...
+[MIT](LICENSE)
+
 
 # Report an issue / Ask a question
 Use the [GitLab repository Issues](https://gitlab.jgilligan.org/chris/tidal_platform/-/issues).
