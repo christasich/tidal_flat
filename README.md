@@ -27,7 +27,7 @@ Use git to clone this repository into your computer.
 ```
 git clone https://gitlab.jgilligan.org/chris/tidal_platform.git
 ```
-https://tidesandcurrents.noaa.gov/datum_options.html
+
 ### Usage
 
 Import the module and dependencies.
@@ -78,7 +78,7 @@ The platform class mostly keeps track of the history of the platform. We have to
 
 
 # Report an issue / Ask a question
-Use the [GitLab repository Issues](https://gitlab.jgilligan.org/chris/tidal_platform/-/issues).
+Use the [GitLab repository Issues](https://gitlab.jgilligan.org/chris/tidal_flat/-/issues).
 
 ## Sources
 
