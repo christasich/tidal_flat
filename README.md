@@ -1,10 +1,10 @@
-# tidal_platform
+# tidal_flat
 
 A zero-dimensional morphodynamic model of elevation change on a tidal platform.
 
 ## About this project
 
-This project uses a zero-dimensional mass balance approach to model the elevation of a tidal platform over time. This work is based on previous studies (Krone, 1987; Allen, 1990; French, 1993; Temmerman et al., 2003, 2004) on the longterm evolution of marsh surfaces. We describe the fundamentals of the model briefly.
+This project uses a zero-dimensional mass balance approach to model the elevation of a tidal platform over time. This work is based on previous studies (Krone, 1987; Allen, 1990; French, 1993; Temmerman et al., 2003, 2004) on the long-term evolution of marsh surfaces. We describe the fundamentals of the model briefly.
 
 The depth of inundation of a tidal platform is defined as
 
@@ -25,7 +25,7 @@ The full description can be found  (...).
 Use git to clone this repository into your computer.
 
 ```
-git clone https://gitlab.jgilligan.org/chris/tidal_platform.git
+git clone https://gitlab.jgilligan.org/chris/tidal_flat.git
 ```
 
 ### Usage
@@ -57,7 +57,7 @@ tides = tides.amplify(af=1.5)
 tides = tides.subset(start='2023', end='2033')
 ```
 
-Each functions returns a copy of your tide object. We first raise sea level by $`5 mm \cdot yr^{-1}`$, then amplify the tides by a factor of $`1.5`$, and finally take a subset of the data from 2020 to 2030. This is useful for modeling changes to the tides or sampling subsets without having to rebuild or reload them from scratch!
+Each function returns a copy of your tide object. We first raise sea level by $`5 mm \cdot yr^{-1}`$, then amplify the tides by a factor of $`1.5`$, and finally take a subset of the data from 2020 to 2030. This is useful for modeling changes to the tides or sample subsets without having to rebuild or reload them from scratch!
 
 Finally, we initialize our platform.
 
