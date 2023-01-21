@@ -22,10 +22,18 @@ The full description is described in Chris Tasich's dissertation and will be pub
 
 ### Source code
 
+This project was built using `Python 3.10.9` using [Poetry](https://python-poetry.org/) to resolve dependencies.
+
 Use git to clone this repository into your computer.
 
-```
+```sh
 git clone https://gitlab.jgilligan.org/chris/tidal_flat.git
+```
+
+Then inside the cloned repository, the environment can be built with
+
+```sh
+poetry install
 ```
 
 ### Usage
