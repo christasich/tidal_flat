@@ -9,12 +9,12 @@ keywords = [
   "marsh dynamics",
   "marsh modeling",
 ]
-name = "tidal_marsh"
+name = "tidal_flat"
 version = "0.1.0"
-description = "A zero-dimensional morphodynamic model of tidal marsh elevation."
+description = "A zero-dimensional morphodynamic model of elevation change on a tidal platform."
 authors = ["Chris Tasich <chris.tasich@vanderbilt.edu>"]
 license = "MIT"
-repository = "https://gitlab.jgilligan.org/chris/tidal_marsh"
+repository = "https://gitlab.jgilligan.org/chris/tidal_flat"
 classifiers = [
   "Topic :: Scientific/Engineering",
   "Topic :: Scientific/Engineering :: GIS",

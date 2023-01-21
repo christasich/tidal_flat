@@ -17,21 +17,13 @@ from .tides import Cycle, Tides
 @dataclass
 class Model:
 
-    """Model class for simulating elevation change of a tidal flat.
-
-    Attributes:
-        attr1 (Tides): Description of `attr1`.
-        attr2 (:obj:`int`, optional): Description of `attr2`.
-
-    """
-
     tides: Tides
     platform: Platform
 
     ssc: float
     grain_diameter: float
     bulk_density: float
-    grain_density: float
+    grain_density: float = 2.65e3
     org_sed: float = 0.0
     compaction: float = 0.0
     deep_sub: float = 0.0
