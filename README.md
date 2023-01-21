@@ -12,7 +12,7 @@ The depth of inundation of a tidal platform is defined as
 h(t) = \zeta(t) - \eta(t)
 ```
 
-where $`\zeta(t)`$ is the water-surface elevation and $\eta(t)`$ is the sediment-surface elevation. The rate of elevation change of the platform is then described as
+where $`\zeta(t)`$ is the water-surface elevation and $`\eta(t)`$ is the sediment-surface elevation. The rate of elevation change of the platform is then described as
 
 ```math
 \frac{d\eta(t)}{dt} = \frac{dS_m(t)}{dt} + \frac{dS_o(t)}{dt} + \frac{dP(t)}{dt} + \frac{dM(t)}{dt}
