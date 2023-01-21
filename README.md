@@ -82,4 +82,12 @@ Use the [GitLab repository Issues](https://gitlab.jgilligan.org/chris/tidal_flat
 
 ## Sources
 
-...
+Allen, J. R. L. (Nov. 1, 1990). “Salt-Marsh Growth and Stratification: A Numerical Model with Special Reference to the Severn Estuary, Southwest Britain”. In: Marine Geology 95.2, pp. 77–96.
+
+French, Jonathan R. (1993). “Numerical Simulation of Vertical Marsh Growth and Adjustment to Accelerated Sea-Level Rise, North Norfolk, U.K.” In: Earth Surface Processes and Landforms 18.1, pp. 63–81.
+
+Krone, R.B. (1987). “A Method for Simulating Marsh Elevations”. In: Coastal Sediments. A Specialty Conference on Advances in Understanding of Coastal Sediment Processes. New Orleans, Louisiana: American Society of Civil Engineers, pp. 316–323
+
+Temmerman, S. et al. (Jan. 15, 2003). “Modelling Long-Term Tidal Marsh Growth under Changing Tidal Conditions and Suspended Sediment Concentrations, Scheldt Estuary, Belgium”. In: Marine Geology 193.1, pp. 151–169.
+
+Temmerman, S. et al. (Nov. 30, 2004). “Modelling Estuarine Variations in Tidal Marsh Sedimentation: Response to Changing Sea Level and Suspended Sediment Concentrations”. In: Marine Geology 212.1, pp. 1–19.
