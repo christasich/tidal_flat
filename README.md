@@ -1,4 +1,4 @@
-tidal_marsh
+tidal_flat
 ==============================
 
-A zero-dimensional model of elevation change of a tidal marsh platform.
+A zero-dimensional morphodynamic model of tidal flat elevation.

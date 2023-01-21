@@ -1,4 +1,4 @@
-from dataclasses import InitVar, dataclass, field
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -99,10 +99,7 @@ class Inundation:
 
         return [d1dt_concentration, d1dt_aggradation]
 
-    def solve(self, ssc, bulk_density, settling_rate, solve_ivp_kwargs=None):
-        if solve_ivp_kwargs is not None:
-            self.solve_ivp_kwargs |= solve_ivp_kwargs
-
+    def solve(self, ssc, bulk_density, settling_rate) -> None:
         self.logger.trace("Integrating flood limb.")
         params = Bunch(depth=self.depth, ssc=ssc, bulk_density=bulk_density, settling_rate=settling_rate)
         flood = solve_ivp(

@@ -179,6 +179,7 @@ bak/
 # Temp data
 .cache/
 .archive/
+data/
 
 
 archive.tar.gz

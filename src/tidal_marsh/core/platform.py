@@ -12,7 +12,7 @@ class Platform:
     records: list = field(init=False, default_factory=list)
 
     def __post_init__(self) -> None:
-        self.log()
+        self.record()
 
     @property
     def surface(self) -> float:
@@ -21,9 +21,9 @@ class Platform:
     def update(self, time, aggradation) -> None:
         self.elapsed += time
         self.aggradation += aggradation
-        self.log()
+        self.record()
 
-    def log(self) -> None:
+    def record(self) -> None:
         record = {"datetime": self.elapsed, "aggradation": self.aggradation}
         self.records.append(record)
 

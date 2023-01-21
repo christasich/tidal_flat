@@ -60,9 +60,7 @@
 		},
 		"jupyter.jupyterServerType": "local",
 		"jupyter.allowUnauthorizedRemoteConnection": true,
-		"python.linting.flake8Enabled": true,
 		"jupyter.notebookFileRoot": "${workspaceFolder}",
-		"python.linting.mypyEnabled": true,
 		"python.formatting.blackArgs": [
 			"--line-length",
 			"120",

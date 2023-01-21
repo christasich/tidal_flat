@@ -41,6 +41,7 @@ tqdm-batch = "^0.1.0"
 psutil = "^5.9.0"
 joblib = "^1.1.0"
 scikit-image = "^0.19.3"
+pandas-stubs = "^1.5.2.230105"
 
 [tool.poetry.dependencies]
 python = ">=3.8.1,<3.11"
