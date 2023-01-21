@@ -180,6 +180,7 @@ bak/
 .cache/
 .archive/
 data/
+notebooks/
 
 
 archive.tar.gz
