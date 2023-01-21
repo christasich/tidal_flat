@@ -18,7 +18,7 @@ where $`\zeta(t)`$ is the water-surface elevation and $\eta(t)`$ is the sediment
 \frac{d\eta(t)}{dt} = \frac{dS_m(t)}{dt} + \frac{dS_o(t)}{dt} + \frac{dP(t)}{dt} + \frac{dM(t)}{dt}
 ```
 
-The full description can be found here.
+The full description can be found  (...).
 
 ### Source code
 
@@ -33,28 +33,28 @@ git clone https://gitlab.jgilligan.org/chris/tidal_platform.git
 Import the module and dependencies.
 
 ```python
-    import pandas as pd
-    import tidal_flat as tf
+import pandas as pd
+import tidal_flat as tf
 ```
 
 Load a tidal time series into pandas. The time series must have a defined frequency or one that can be infered from the data.
 
 ```python
-    tides = tf.Tides(data)
+tides = tf.Tides(data)
 ```
 
 The tides class has some useful functions like summarize which calculates the tidal datums defined by [NOAA](https://tidesandcurrents.noaa.gov/datum_options.html). You can specify a frequency string to calculate at different intervals.
 
 ```python
-    annual = tides.summarize(freq='A')
+annual = tides.summarize(freq='A')
 ```
 
 There are also functions to amplify the tides and change sea level.
 
 ```python
-    tides = tides.raise_sea_level(slr=0.005)
-    tides = tides.amplify(af=1.5)
-    tides = tides.subset(start='2020', end='2030')
+tides = tides.raise_sea_level(slr=0.005)
+tides = tides.amplify(af=1.5)
+tides = tides.subset(start='2023', end='2033')
 ```
 
 Each functions returns a copy of your tide object. We first raise sea level by $`5 mm \cdot yr^{-1}`$, then amplify the tides by a factor of $`1.5`$, and finally take a subset of the data from 2020 to 2030. This is useful for modeling changes to the tides or sample subsets without having to rebuild or reload them from scratch!
@@ -62,15 +62,27 @@ Each functions returns a copy of your tide object. We first raise sea level by $
 Finally, we initialize our platform.
 
 ```python
-    platform = tf.platform.Platform(time_ref=tides.start, elevation_ref=0.0)
+platform = tf.platform.Platform(time_ref=tides.start, elevation_ref=1.5)
 ```
 
-The platform class mostly keeps track of the history of the platform. We have to evolve it before it can really tell us anything interesting! We can then run our model by passing the tides and platform to our model class along with a handful of parameters.
+The platform class mostly keeps track of the history of the platform. We have to evolve it before it can really tell us anything interesting! We can then initialize our model by passing the tides and platform to our model class along with a handful of parameters.
 
 ```python
-
+model = tf.model.Model(
+    tides=tides,
+    platform=platform,
+    ssc=0.2,                    # g/L
+    grain_diameter=25.0e-6,     # m
+    bulk_density=1000,          # g/cm^3
+)
 ```
 
+And then finally run it using,
+
+```python
+model.run()
+```
+![](images/simulation.gif)
 
 ## License
 
