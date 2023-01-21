@@ -22,12 +22,13 @@ The full description is described in Chris Tasich's dissertation and will be pub
 
 ### Source code
 
-This project was built using `Python 3.10.9` using [Poetry](https://python-poetry.org/) to resolve dependencies.
+This project was built with `Python 3.10.9` using [Poetry](https://python-poetry.org/) to resolve dependencies.
 
 Use git to clone this repository into your computer.
 
 ```sh
 git clone https://gitlab.jgilligan.org/chris/tidal_flat.git
+cd tidal_flat/
 ```
 
 Then inside the cloned repository, the environment can be built with
@@ -50,7 +51,12 @@ Load a tidal time series into pandas. The time series must have a defined freque
 *Note: This data set was based on five years of observations. A harmonic analysis was then used to create an extended tide record using [UTide](https://github.com/wesleybowman/UTide).*
 
 ```python
-data = pd.read_csv('example/tides.csv', index_col='datetime', parse_dates=True, infer_datetime_format=True).squeeze()
+data = pd.read_csv(
+    'example/tides.csv',
+    index_col='datetime',
+    parse_dates=True,
+    infer_datetime_format=True
+    ).squeeze()
 ```
 
 We can then create a tide object from this time series.
