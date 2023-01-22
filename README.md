@@ -34,7 +34,7 @@ Afterwards, use git to clone this repository into your computer.
 git clone https://gitlab.jgilligan.org/chris/tidal_flat.git
 ```
 
-Then inside the cloned repository, the environment can be built with
+Then navigate inside the cloned repository and install the environment.
 
 ```sh
 cd tidal_flat/
@@ -43,7 +43,7 @@ poetry install
 
 ### Usage
 
-Import the module and dependencies.
+Import pandas (to load the data) and the tidal_flat module.
 
 ```python
 import pandas as pd
@@ -61,7 +61,10 @@ data = pd.read_csv(
     parse_dates=True,
     infer_datetime_format=True
     ).squeeze()
+data.index = pd.DatetimeIndex(data.index, freq='infer')
 ```
+
+Because `pd.read_csv` does not set the frequency, we recreate the `pd.DatetimeIndex` and tell pandas to infer the frequency.
 
 We can then create a tide object from this time series.
 
@@ -72,27 +75,28 @@ tides = tf.Tides(data)
 The tides class has some useful functions like `summarize` which calculates the tidal datums defined by [NOAA](https://tidesandcurrents.noaa.gov/datum_options.html). You can specify a frequency string to calculate at different intervals.
 
 ```python
-annual = tides.summarize(freq='A')
+tides.summarize(freq='A')
 ```
+![](images/tides_summary.png)
 
 There are also functions to change sea level, amplify the tides, or take slices of the data.
 
 ```python
-tides = tides.raise_sea_level(slr=0.005)
-tides = tides.amplify(af=1.5)
+tides = tides.raise_sea_level(slr=0.005)        # 5mm/yr
+tides = tides.amplify(af=1.25)                  # factor of 1.25/yr
 tides = tides.subset(start='2023', end='2025')
 ```
 
-Each function returns a copy of your tide object. We first raise sea level by $`5 mm \cdot yr^{-1}`$, then amplify the tides by an annual factor of $`1.5`$, and finally take a subset of the data from 2023 to 2025. This is useful for modeling changes to the tides or creating a subset without having to rebuild or reload them from scratch! These can also be chained together like this
+Each function returns a copy of your tide object. We first raise sea level by $`5 mm \cdot yr^{-1}`$, then amplify the tides by an annual factor of $`1.25`$, and finally take a subset of the data from 2023 to 2025. This is useful for modeling changes to the tides or creating a subset without having to rebuild or reload them from scratch! These can also be chained together like this
 
 ```python
-tides = tides.raise_sea_level(slr=0.005).amplify(af=1.5).subset(start='2023', end='2025')
+tides = tides.raise_sea_level(slr=0.005).amplify(af=1.25).subset(start='2023', end='2025')
 ```
 
 Finally, we initialize our platform.
 
 ```python
-platform = tf.platform.Platform(time_ref=tides.start, elevation_ref=1.5)
+platform = tf.platform.Platform(time_ref=tides.start, elevation_ref=2.0)
 ```
 
 The platform class mostly keeps track of the history of the platform. We have to evolve it before it can really tell us anything interesting!
@@ -129,11 +133,17 @@ and calculate the results with
 results = model.summarize()
 ```
 
-The `results` returns two dataframes in `Bunch` object. `results.platform` shows the annual total aggradation, total subsidence, total net surface elevation change, and final surface elevation. `results.inundations` shows the characteristics of each inundation along with a few diagnostic variables.
+The `results` returns two dataframes in `Bunch` object. `results.platform` shows the total aggradation, total subsidence, total net surface elevation change, and surface elevation at each time step.
+
+![](images/platform.png)
+
+`results.inundations` shows the characteristics of each inundation along with a few diagnostic variables.
+
+![](images/inundations.png)
 
 ## Future plans
 
-This package is actively being developed. Only the bare essentials have been documented here. We have a handful of other classes and functions that we have yet to expose. For instance, you may want to run a variety of platform conditions (I know we did!). Organizing this and keeping tracking of the results can become tedious. We use a combination of multiprocessing and yaml based configuration files to accomplish this. We've also implemented logging through [loguru](https://github.com/Delgan/loguru) that we have yet to document
+This package is actively being developed. Only the bare essentials have been documented here. We have a handful of other classes and functions that we have yet to expose. For instance, you may want to run a variety of platform conditions (I know we did!). Organizing this and keeping tracking of the results can become tedious. We use a combination of multiprocessing and yaml based configuration files to accomplish this. We've also implemented logging through [loguru](https://github.com/Delgan/loguru) that we have yet to document.
 
 ## License
 
