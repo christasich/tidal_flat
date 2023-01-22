@@ -99,7 +99,7 @@ class Model:
         step = round((self.pos + 1) / self.pbar_unit, 2) - self.pbar.n
         self.pbar.update(n=step)
 
-    def bkgrd_offset(self, time: pd.Timedelta | pd.TimedeltaIndex = YEAR) -> float | pd.Float64Index:
+    def bkgrd_offset(self, time: pd.Timedelta | pd.TimedeltaIndex = YEAR) -> Any:
         return (self.org_sed + self.compaction + self.deep_sub) * time / YEAR
 
     def next_cycle(self) -> Cycle | None:
