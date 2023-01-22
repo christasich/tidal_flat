@@ -133,7 +133,9 @@ and calculate the results with
 results = model.summarize()
 ```
 
-The `results` returns two dataframes in `Bunch` object. `results.platform` shows the total aggradation, total subsidence, total net surface elevation change, and surface elevation at each time step.
+The `results` returns two dataframes in `Bunch` object.
+
+`results.platform` shows the total aggradation, total subsidence, total net surface elevation change, and surface elevation at each time step.
 
 ![](images/platform.png)
 
