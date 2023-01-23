@@ -43,7 +43,7 @@ poetry install
 
 ## Usage
 
-*This section is also included as a [notebook](example/example.ipynb).*
+*This section is also included as a notebook under the [example](example/) directory.*
 
 Import pandas (to load the data) and the tidal_flat module.
 
