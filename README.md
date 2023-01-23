@@ -124,7 +124,7 @@ results = model.summarize()
 
 The `results` returns two dataframes in `Bunch` object.
 
-`results.platform` shows the total aggradation, total subsidence, total net surface elevation change, and surface elevation at each time step. For this simulation, we included subsidence in `slr` to capture a relative rate of sea level rise. Because of this, the results show no subsidence.
+`results.platform` shows the total aggradation, total subsidence, total net surface elevation change, and surface elevation at each time step.
 
 ![](images/platform.png)
 
