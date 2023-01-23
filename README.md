@@ -55,13 +55,8 @@ Load a tidal time series into pandas. The time series must have a defined freque
 *Note: This data set was based on five years of observations. A harmonic analysis was then used to create an extended tide record using [UTide](https://github.com/wesleybowman/UTide).*
 
 ```python
-data = pd.read_csv(
-    'example/tides.csv',
-    index_col='datetime',
-    parse_dates=True,
-    infer_datetime_format=True
-    ).squeeze()
-data.index = pd.DatetimeIndex(data.index, freq='infer')
+data = pd.read_csv("example/tides.csv", index_col="datetime", parse_dates=True, infer_datetime_format=True).squeeze()
+data.index = pd.DatetimeIndex(data.index, freq="infer")
 ```
 
 Because `pd.read_csv` does not set the frequency, we recreate the `pd.DatetimeIndex` and tell pandas to infer the frequency.
@@ -82,18 +77,18 @@ tides.summarize(freq='A')
 There are also functions to change sea level, amplify the tides, or take slices of the data.
 
 ```python
-tides = tides.raise_sea_level(slr=0.005)        # 5mm/yr
-tides = tides.amplify(factor=1.25)              # factor of 1.25/yr
-tides = tides.subset(start='2023', end='2025')
+tides.raise_sea_level(slr=0.005)        # 5mm/yr
+tides.amplify(factor=1.25)              # factor of 1.25
+tides.subset(start='2023', end='2025')  # subset three years of data from 2023 to 2025
 ```
 
-Each function returns a copy of your tide object. We first raise sea level by $`5 mm \cdot yr^{-1}`$, then amplify the tides by an annual factor of $`1.25`$, and finally take a subset of the data from 2023 to 2025. This is useful for modeling changes to the tides or creating a subset without having to rebuild or reload them from scratch! These can also be chained together like this
+Each function returns a copy of your tide object. We first raise sea level by $`3 mm \cdot yr^{-1}`$, then amplify the tides by an factor of $`1.25`$, and finally take a subset of the data from 2023 to 2025. This is useful for modeling changes to the tides or creating a subset without having to rebuild or reload them from scratch! These can also be chained together like this
 
 ```python
-tides = tides.raise_sea_level(slr=0.005).amplify(factor=1.25).subset(start='2023', end='2025')
+tides = tides.raise_sea_level(slr=0.003).amplify(factor=1.25).subset(start='2023', end='2025')
 ```
 
-Finally, we initialize our platform.
+Now, we initialize our platform.
 
 ```python
 platform = tf.platform.Platform(time_ref=tides.start, elevation_ref=2.0)
@@ -103,7 +98,7 @@ The platform class mostly keeps track of the history of the platform. We have to
 
 *Note: Both arguments are optional, but it's sometimes useful for consistency between runs or if you want to extend a simulation by using the same tide curve from the beginning.*
 
-We can then initialize our model by passing the tides and platform to our model class along with a handful of parameters.
+We can then initialize and run our model by passing the tides and platform to our model class along with a handful of parameters. A number of these parameters are optional. It's sometimes useful to exclude the other annual rates (organic matter, compaction, deep subsidence) from the model. For instance, you may want to simulate relative sea level rise. In this case, compaction and subsidence should be set to zero since they will be captured through an increase in the tidal water levels.
 
 ```python
 model = tf.model.Model(
@@ -114,20 +109,14 @@ model = tf.model.Model(
     bulk_density=1e3,           # g/cm^3
     grain_density=2.65e3,       # g/cm^3    [Optional] default is the density of a quartz grain
     org_sed = 0.0,              # m/yr      [Optional]
-    compaction = 0.0,           # m/yr      [Optional]
-    deep_sub = 0.0              # m/yr      [Optional]
+    compaction = 7e-4,          # m/yr      [Optional]
+    deep_sub = 3e-4             # m/yr      [Optional]
 )
-```
-A number of the parameters are optional. It's sometimes useful to exclude the other annual rates (organic matter, compaction, deep subsidence) from the model. For instance, you may want to simulate relative sea level rise. In this case, compaction and subsidence should be set to zero since they will be captured through an increase in the tidal water levels.
-
-Finally, we can run our model using,
-
-```python
 model.run()
 ```
 ![](images/simulation.gif)
 
-and calculate the results with
+Once the model is finished we can get the results like this.
 
 ```python
 results = model.summarize()
@@ -138,6 +127,26 @@ The `results` returns two dataframes in `Bunch` object.
 `results.platform` shows the total aggradation, total subsidence, total net surface elevation change, and surface elevation at each time step. For this simulation, we included subsidence in `slr` to capture a relative rate of sea level rise. Because of this, the results show no subsidence.
 
 ![](images/platform.png)
+
+We can plot our results to show the change during our simulation. Let's plot the elevation of the platform and high water levels by month. This will allow us to see the seasonal signal in our data. We'll need two additional packages (`matplotlib` and `seaborn`) to make plotting easier.
+
+```python
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+freq = 'M'
+
+monthly_platform = results.platform.resample(freq).mean()
+monthly_tides = model.tides.summarize(freq)
+
+fig, ax = plt.subplots(figsize=(10, 5))
+
+sns.lineplot(data=monthly_platform.elevation, color='black', label='platform', ax=ax)
+sns.lineplot(data=monthly_tides[['MHHW', 'MHW']], ax=ax)    # only plot mean high water and mean higher high water
+ax.get_legend().set_title('')   # remove legend title
+```
+
+![](images/results.png)
 
 `results.inundations` shows the characteristics of each inundation along with a few diagnostic variables.
 
