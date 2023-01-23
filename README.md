@@ -154,7 +154,7 @@ ax.get_legend().set_title('')   # remove legend title
 
 ![](images/results.png)
 
-`results.inundations` shows the characteristics of each inundation along with a few diagnostic variables. This is useful for tracking how inundations are changing through time with changes to water level.
+`results.inundations` shows the characteristics of each inundation along with a few diagnostic variables. This is useful for tracking how inundations are changing through time as water level changes.
 
 ![](images/inundations.png)
 
