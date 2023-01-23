@@ -22,7 +22,13 @@ The full description is described in Chris Tasich's dissertation and will be pub
 
 ## Source code
 
-This project was built with `Python 3.10.9` using [Poetry](https://python-poetry.org/) to resolve dependencies. This project also requires [Git LFS](https://git-lfs.com/) which needs to be installed before cloning. You can install this with
+Prerequisites
+- [Python](https://www.python.org/) (>=3.8.1, <3.11)
+- [Git LFS](https://git-lfs.com/)
+- [Poetry](https://python-poetry.org/) or another way to create a virtual environment using the [pyproject.toml](pyprojec.toml) file.
+
+
+First make sure Git LFS is installed.
 
 ```sh
 git lfs install
