@@ -152,6 +152,8 @@ ax.get_legend().set_title('')   # remove legend title
 
 ![](images/inundations.png)
 
+*This section is also included as a [notebook](example/example.ipynb).*
+
 ## Future plans
 
 This package is actively being developed. Only the bare essentials have been documented here. We have a handful of other classes and functions that we have yet to expose. For instance, you may want to run a variety of platform conditions (I know we did!). Organizing this and keeping tracking of the results can become tedious. We use a combination of multiprocessing and yaml based configuration files to accomplish this. We've also implemented logging through [loguru](https://github.com/Delgan/loguru) that we have yet to document.
