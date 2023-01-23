@@ -83,14 +83,14 @@ There are also functions to change sea level, amplify the tides, or take slices 
 
 ```python
 tides = tides.raise_sea_level(slr=0.005)        # 5mm/yr
-tides = tides.amplify(af=1.25)                  # factor of 1.25/yr
+tides = tides.amplify(factor=1.25)              # factor of 1.25/yr
 tides = tides.subset(start='2023', end='2025')
 ```
 
 Each function returns a copy of your tide object. We first raise sea level by $`5 mm \cdot yr^{-1}`$, then amplify the tides by an annual factor of $`1.25`$, and finally take a subset of the data from 2023 to 2025. This is useful for modeling changes to the tides or creating a subset without having to rebuild or reload them from scratch! These can also be chained together like this
 
 ```python
-tides = tides.raise_sea_level(slr=0.005).amplify(af=1.25).subset(start='2023', end='2025')
+tides = tides.raise_sea_level(slr=0.005).amplify(factor=1.25).subset(start='2023', end='2025')
 ```
 
 Finally, we initialize our platform.
