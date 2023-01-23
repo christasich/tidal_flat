@@ -52,7 +52,7 @@ import pandas as pd
 import tidal_flat as tf
 ```
 
-Load a tidal time series into pandas. The time series must have a defined frequency or one that can be inferred from the data. We can use our sample data found in `example/tides.csv`.
+Load a tidal time series into pandas. The time series must have a defined frequency or one that can be inferred from the data. We can use our sample data found in `example/tides.csv`. Because `pd.read_csv` does not set the frequency, we recreate the `pd.DatetimeIndex` and tell pandas to infer the frequency.
 
 *Note: This data set was based on five years of observations. A harmonic analysis was then used to create an extended tide record using [UTide](https://github.com/wesleybowman/UTide).*
 
@@ -60,8 +60,6 @@ Load a tidal time series into pandas. The time series must have a defined freque
 data = pd.read_csv("example/tides.csv", index_col="datetime", parse_dates=True, infer_datetime_format=True).squeeze()
 data.index = pd.DatetimeIndex(data.index, freq="infer")
 ```
-
-Because `pd.read_csv` does not set the frequency, we recreate the `pd.DatetimeIndex` and tell pandas to infer the frequency.
 
 We can then create a tide object from this time series.
 
