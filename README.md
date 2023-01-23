@@ -111,8 +111,8 @@ model = tf.model.Model(
     bulk_density=1e3,           # g/cm^3
     grain_density=2.65e3,       # g/cm^3    [Optional] default is the density of a quartz grain
     org_sed = 0.0,              # m/yr      [Optional]
-    compaction = 7e-4,          # m/yr      [Optional]
-    deep_sub = 3e-4             # m/yr      [Optional]
+    compaction = 7e-3,          # m/yr      [Optional]
+    deep_sub = 3e-3             # m/yr      [Optional]
 )
 model.run()
 ```
