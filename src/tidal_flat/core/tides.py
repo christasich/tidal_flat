@@ -186,8 +186,8 @@ def summarize_tides(data: pd.Series) -> pd.Series:
     lunar_phases = (
         pd.read_csv(lp_data, index_col="datetime", parse_dates=True).squeeze().loc[data.index[0] : data.index[-1]]
     )
-    if data.index.tzinfo:
-        tz = data.index.tzinfo
+
+    tz = data.index.tzinfo
 
     springs = lunar_phases.loc[(lunar_phases == "New Moon") | (lunar_phases == "Full Moon")].tz_convert(tz)
     neaps = lunar_phases.loc[(lunar_phases == "First Quarter") | (lunar_phases == "Last Quarter")].tz_convert(tz)
