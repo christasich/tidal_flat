@@ -103,7 +103,7 @@ class Tides:
         return self.levels[self.data.high]
 
     def __post_init__(self, series: pd.Series) -> None:
-        if series.index.tz:
+        if not series.index.tz:
             series = series.tz_localize("UTC")
         highs, lows = find_pv(data=series, distance="8H")
         highs = highs.loc[lows.index[0] : lows.index[-1]]
