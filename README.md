@@ -20,7 +20,7 @@ where $`\zeta(t)`$ is the water-surface elevation and $`\eta(t)`$ is the sedimen
 
 The full description is described in Chris Tasich's dissertation and will be published soon.
 
-### Source code
+## Source code
 
 This project was built with `Python 3.10.9` using [Poetry](https://python-poetry.org/) to resolve dependencies. This project also requires [Git LFS](https://git-lfs.com/) which needs to be installed before cloning. You can install this with
 
@@ -41,7 +41,9 @@ cd tidal_flat/
 poetry install
 ```
 
-### Usage
+## Usage
+
+*This section is also included as a [notebook](example/example.ipynb).*
 
 Import pandas (to load the data) and the tidal_flat module.
 
@@ -152,8 +154,6 @@ ax.get_legend().set_title('')   # remove legend title
 
 ![](images/inundations.png)
 
-*This section is also included as a [notebook](example/example.ipynb).*
-
 ## Future plans
 
 This package is actively being developed. Only the bare essentials have been documented here. We have a handful of other classes and functions that we have yet to expose. For instance, you may want to run a variety of platform conditions (I know we did!). Organizing this and keeping tracking of the results can become tedious. We use a combination of multiprocessing and yaml based configuration files to accomplish this. We've also implemented logging through [loguru](https://github.com/Delgan/loguru) that we have yet to document.
@@ -163,7 +163,7 @@ This package is actively being developed. Only the bare essentials have been doc
 [MIT](LICENSE)
 
 
-# Report an issue / Ask a question
+## Report an issue / Ask a question
 Use the [GitLab repository Issues](https://gitlab.jgilligan.org/chris/tidal_flat/-/issues).
 
 ## Sources
