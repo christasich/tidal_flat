@@ -9,13 +9,13 @@ This project uses a zero-dimensional mass balance approach to model the elevatio
 The depth of inundation of a tidal platform is defined as
 
 ```math
-h(t) = \zeta(t) - \eta(t)
+h(t) = \zeta(t) - \eta(t),
 ```
 
 where $`\zeta(t)`$ is the water-surface elevation and $`\eta(t)`$ is the sediment-surface elevation. The rate of elevation change of the platform is then described as
 
 ```math
-\frac{d\eta(t)}{dt} = \frac{dS_m(t)}{dt} + \frac{dS_o(t)}{dt} + \frac{dP(t)}{dt} + \frac{dM(t)}{dt}
+\frac{d\eta(t)}{dt} = \frac{dS_m(t)}{dt} + \frac{dS_o(t)}{dt} + \frac{dP(t)}{dt} + \frac{dM(t)}{dt},
 ```
 
 where $`dSm(t)/dt`$ is the rate of mineral sedimentation, $`dSo(t)/dt`$ is the rate of organic matter sedimentation, $`dP(t)/dt`$ is the rate of shallow compaction, and $`dM(t)/dt`$ is the rate of subsidence due to tectonics and deep compaction.
