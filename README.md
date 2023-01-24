@@ -18,12 +18,14 @@ where $`\zeta(t)`$ is the water-surface elevation and $`\eta(t)`$ is the sedimen
 \frac{d\eta(t)}{dt} = \frac{dS_m(t)}{dt} + \frac{dS_o(t)}{dt} + \frac{dP(t)}{dt} + \frac{dM(t)}{dt}
 ```
 
-The full description is described in Chris Tasich's dissertation and will be published soon.
+where $`dSm(t)/dt`$ is the rate of mineral sedimentation, $`dSo(t)/dt`$ is the rate of organic matter sedimentation, $`dP(t)/dt`$ is the rate of shallow compaction, and $`dM(t)/dt`$ is the rate of subsidence due to tectonics and deep compaction.
+
+The full description will be described in Chris Tasich's upcoming dissertation.
 
 ## Source code
 
 Prerequisites
-- [Python](https://www.python.org/) (>=3.8.1, <3.11)
+- [Python](https://www.python.org/) (&geq;3.8.1, &lt;3.11)
 - [Git LFS](https://git-lfs.com/)
 - [Poetry](https://python-poetry.org/) or another way to create a virtual environment using the [pyproject.toml](pyprojec.toml) file.
 
