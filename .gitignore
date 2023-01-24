@@ -172,6 +172,8 @@ cython_debug/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode
 
+results/
+
 # Temp data
 .cache/
 .tmp/
