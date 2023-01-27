@@ -12,23 +12,25 @@ The depth of inundation of a tidal platform is defined as
 h(t) = \zeta(t) - \eta(t),
 ```
 
-where $`\zeta(t)`$ is the water-surface elevation and $`\eta(t)`$ is the sediment-surface elevation. The rate of elevation change of the platform is then described as
+where $\zeta(t)$ is the water-surface elevation and $\eta(t)$ is the sediment-surface elevation. The rate of elevation change of the platform is then described as
 
 ```math
 \frac{d\eta(t)}{dt} = \frac{dS_m(t)}{dt} + \frac{dS_o(t)}{dt} + \frac{dP(t)}{dt} + \frac{dM(t)}{dt},
 ```
 
-where $`dSm(t)/dt`$ is the rate of mineral sedimentation, $`dSo(t)/dt`$ is the rate of organic matter sedimentation, $`dP(t)/dt`$ is the rate of shallow compaction, and $`dM(t)/dt`$ is the rate of subsidence due to tectonics and deep compaction.
+where $dSm(t)/dt$ is the rate of mineral sedimentation, $dSo(t)/dt$ is the rate of organic matter sedimentation, $dP(t)/dt$ is the rate of shallow compaction, and $dM(t)/dt$ is the rate of subsidence due to tectonics and deep compaction.
 
 The full description will be described in Chris Tasich's upcoming dissertation.
 
-## Source code
+## Installation
 
-Prerequisites
+### Requirements
+
 - [Python](https://www.python.org/) (&geq;3.8.1, &lt;3.11)
 - [Git LFS](https://git-lfs.com/)
 - [Poetry](https://python-poetry.org/) or another way to create a virtual environment using the [pyproject.toml](pyprojec.toml) file.
 
+### Source code
 
 First make sure Git LFS is installed.
 
@@ -52,6 +54,8 @@ poetry install
 ## Usage
 
 *This section is also included as a notebook under the [example](example/) directory.*
+
+*Before starting, ensure that your working directory is set to the root of the cloned repository.*
 
 Import pandas (to load the data) and the tidal_flat module.
 
@@ -85,15 +89,15 @@ tides.summarize(freq='A')
 There are also functions to change sea level, amplify the tides, or take slices of the data.
 
 ```python
-tides.raise_sea_level(slr=0.005)        # 5mm/yr
-tides.amplify(factor=1.25)              # factor of 1.25
+tides.raise_sea_level(slr=0.005)        # raise sea level by 5 mm/yr
+tides.amplify(factor=1.25)              # amplify the tides by a factor of 1.25
 tides.subset(start='2023', end='2025')  # subset three years of data from 2023 to 2025
 ```
 
-Each function returns a copy of your tide object. We first raise sea level by $`3 mm \cdot yr^{-1}`$, then amplify the tides by an factor of $`1.25`$, and finally take a subset of the data from 2023 to 2025. This is useful for modeling changes to the tides or creating a subset without having to rebuild or reload them from scratch! These can also be chained together like this
+Each function returns a copy of your tide object. This is useful for modeling changes to the tides or creating a subset without having to rebuild or reload them from scratch! These can also be chained together like this.
 
 ```python
-tides = tides.raise_sea_level(slr=0.003).amplify(factor=1.25).subset(start='2023', end='2025')
+tides = tides.amplify(factor=1.25).raise_sea_level(slr=0.003).subset(start='2023', end='2025')
 ```
 
 Now, we initialize our platform.
@@ -170,6 +174,7 @@ This package is actively being developed. Only the bare essentials have been doc
 
 
 ## Report an issue / Ask a question
+
 Use the [GitLab repository Issues](https://gitlab.jgilligan.org/chris/tidal_flat/-/issues).
 
 ## Sources
