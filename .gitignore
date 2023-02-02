@@ -579,4 +579,3 @@ $RECYCLE.BIN/
 ## Project specific gitignore
 
 .tool-versions
-!.vscode/*.code-workspace
