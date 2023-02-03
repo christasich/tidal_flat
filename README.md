@@ -28,7 +28,7 @@ The full description will be described in Chris Tasich's upcoming dissertation.
 
 - [Python](https://www.python.org/) (&geq;3.8.1, &lt;3.11)
 - [Git LFS](https://git-lfs.com/)
-- [Poetry](https://python-poetry.org/) or another way to create a virtual environment using the [pyproject.toml](pyprojec.toml) file.
+- [Poetry](https://python-poetry.org/) or another way to create a virtual environment using the [pyproject.toml](pyproject.toml) file.
 
 ### Source code
 
