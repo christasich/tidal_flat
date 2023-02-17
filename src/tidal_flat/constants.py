@@ -1,6 +1,6 @@
 import pandas as pd
 
-SECOND = pd.Timedelta(1, unit="s")
+SECOND = pd.Timedelta(1, unit='s')
 MINUTE = SECOND * 60
 HOUR = MINUTE * 60
 DAY = HOUR * 24

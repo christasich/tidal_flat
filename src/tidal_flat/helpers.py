@@ -10,7 +10,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.utils import Bunch
 
 
-def interpolate_ts(ts: pd.Series, freq: str = "T") -> pd.Series:
+def interpolate_ts(ts: pd.Series, freq: str = 'T') -> pd.Series:
     """Coerces a time series of irregularly spaced data to a regular time series using interpolation.
 
     Args:
@@ -25,7 +25,7 @@ def interpolate_ts(ts: pd.Series, freq: str = "T") -> pd.Series:
 
     ts = pd.concat([ts, pd.DataFrame(columns=ts.columns, index=norm_index)])
     ts = ts[~ts.index.duplicated()].sort_index()
-    ts = ts.interpolate(method="time", limit_area="inside")
+    ts = ts.interpolate(method='time', limit_area='inside')
     return ts.loc[norm_index].dropna()
 
 
@@ -66,8 +66,8 @@ def find_pv(data: pd.Series, distance: str | None = None) -> tuple[pd.Series, pd
     valleys_iloc = find_peaks(x=data * -1, distance=distance)[0]
 
     return (
-        data.iloc[peaks_iloc].rename("elevation").rename_axis("datetime"),
-        data.iloc[valleys_iloc].rename("elevation").rename_axis("datetime"),
+        data.iloc[peaks_iloc].rename('elevation').rename_axis('datetime'),
+        data.iloc[valleys_iloc].rename('elevation').rename_axis('datetime'),
     )
 
 
@@ -93,5 +93,5 @@ def lowess_ts(data: pd.Series, window: pd.Timedelta = None) -> pd.Series:
 
 def find_roots(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     roots = np.where(np.diff(np.signbit(a - b)))[0]
-    logger.trace(f"{len(roots)} root(s) found.")
+    logger.trace(f'{len(roots)} root(s) found.')
     return roots

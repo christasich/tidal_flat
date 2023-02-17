@@ -69,7 +69,12 @@ Load a tidal time series into pandas. The time series must have a defined freque
 *Note: This data set was based on five years of observations. A harmonic analysis was then used to create an extended tide record using [UTide](https://github.com/wesleybowman/UTide).*
 
 ```python
-data = pd.read_csv("example/tides.csv", index_col="datetime", parse_dates=True, infer_datetime_format=True).squeeze()
+data = pd.read_csv(
+    "example/tides.csv",
+    index_col="datetime",
+    parse_dates=True,
+    infer_datetime_format=True,
+).squeeze()
 data.index = pd.DatetimeIndex(data.index, freq="infer")
 ```
 
@@ -82,22 +87,26 @@ tides = tf.Tides(data)
 The tides class has some useful functions like `summarize` which calculates the tidal datums defined by [NOAA](https://tidesandcurrents.noaa.gov/datum_options.html). You can specify a frequency string to calculate at different intervals.
 
 ```python
-tides.summarize(freq='A')
+tides.summarize(freq="A")
 ```
 ![](images/tides_summary.png)
 
 There are also functions to change sea level, amplify the tides, or take slices of the data.
 
 ```python
-tides.raise_sea_level(slr=0.005)        # raise sea level by 5 mm/yr
-tides.amplify(factor=1.25)              # amplify the tides by a factor of 1.25
-tides.subset(start='2023', end='2025')  # subset three years of data from 2023 to 2025
+tides.raise_sea_level(slr=0.005)  # raise sea level by 5 mm/yr
+tides.amplify(factor=1.25)  # amplify the tides by a factor of 1.25
+tides.subset(start="2023", end="2025")  # subset three years of data from 2023 to 2025
 ```
 
 Each function returns a copy of your tide object. This is useful for modeling changes to the tides or creating a subset without having to rebuild or reload them from scratch! These can also be chained together like this.
 
 ```python
-tides = tides.amplify(factor=1.25).raise_sea_level(slr=0.003).subset(start='2023', end='2025')
+tides = (
+    tides.amplify(factor=1.25)
+    .raise_sea_level(slr=0.003)
+    .subset(start="2023", end="2025")
+)
 ```
 
 Now, we initialize our platform.
@@ -116,13 +125,13 @@ We can then initialize and run our model by passing the tides and platform to ou
 model = tf.model.Model(
     tides=tides,
     platform=platform,
-    ssc=0.2,                    # g/L
-    grain_diameter=2.5e-5,      # m
-    bulk_density=1e3,           # g/cm^3
-    grain_density=2.65e3,       # g/cm^3    [Optional] default is the density of a quartz grain
-    org_sed = 0.0,              # m/yr      [Optional]
-    compaction = 7e-3,          # m/yr      [Optional]
-    deep_sub = 3e-3             # m/yr      [Optional]
+    ssc=0.2,  # g/L
+    grain_diameter=2.5e-5,  # m
+    bulk_density=1e3,  # g/cm^3
+    grain_density=2.65e3,  # g/cm^3    [Optional] default is the density of a quartz grain
+    org_sed=0.0,  # m/yr      [Optional]
+    compaction=7e-3,  # m/yr      [Optional]
+    deep_sub=3e-3,  # m/yr      [Optional]
 )
 model.run()
 ```
@@ -146,16 +155,18 @@ We can plot our results to show the change during our simulation. Let's plot the
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-freq = 'M'
+freq = "M"
 
 monthly_platform = results.platform.resample(freq).mean()
 monthly_tides = model.tides.summarize(freq)
 
 fig, ax = plt.subplots(figsize=(10, 5))
 
-sns.lineplot(data=monthly_platform.elevation, color='black', label='platform', ax=ax)
-sns.lineplot(data=monthly_tides[['MHHW', 'MHW']], ax=ax)    # only plot mean high water and mean higher high water
-ax.get_legend().set_title('')   # remove legend title
+sns.lineplot(data=monthly_platform.elevation, color="black", label="platform", ax=ax)
+sns.lineplot(
+    data=monthly_tides[["MHHW", "MHW"]], ax=ax
+)  # only plot mean high water and mean higher high water
+ax.get_legend().set_title("")  # remove legend title
 ```
 
 ![](images/results.png)

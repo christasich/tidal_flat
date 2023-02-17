@@ -18,16 +18,16 @@ class Platform:
     def surface(self) -> float:
         return self.aggradation + self.elevation_ref
 
-    def update(self, time, aggradation) -> None:
+    def update(self, time: pd.Timedelta, aggradation: float) -> None:
         self.elapsed += time
         self.aggradation += aggradation
         self.record()
 
     def record(self) -> None:
-        record = {"datetime": self.elapsed, "aggradation": self.aggradation}
+        record = {'datetime': self.elapsed, 'aggradation': self.aggradation}
         self.records.append(record)
 
     def report(self) -> pd.Series:
-        s = pd.DataFrame.from_records(data=self.records, index="datetime").squeeze(axis=1)
+        s = pd.DataFrame.from_records(data=self.records, index='datetime').squeeze(axis=1)
         s.index += self.time_ref
         return s

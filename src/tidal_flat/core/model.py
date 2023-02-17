@@ -8,7 +8,8 @@ from loguru import logger
 from sklearn.utils import Bunch
 from tqdm.auto import tqdm
 
-from ..constants import CYCLES_PER_DAY, CYCLES_PER_YEAR, GRAVITY, WATER_DENSITY, WATER_VISCOSITY, YEAR
+from tidal_flat.constants import CYCLES_PER_DAY, CYCLES_PER_YEAR, GRAVITY, WATER_DENSITY, WATER_VISCOSITY, YEAR
+
 from .inundation import Inundation
 from .platform import Platform
 from .tides import Cycle, Tides
@@ -16,7 +17,6 @@ from .tides import Cycle, Tides
 
 @dataclass
 class Model:
-
     tides: Tides
     platform: Platform
 
@@ -51,10 +51,10 @@ class Model:
         self.start = self.now = self.tides.start
         self.end = self.tides.end
         self.period = self.tides.period
-        self.logger: logger = logger.patch(lambda record: record["extra"].update(model_time=self.now))
+        self.logger: logger = logger.patch(lambda record: record['extra'].update(model_time=self.now))
 
         self.settling_rate = self.stokes_settling(grain_diameter=self.grain_diameter, grain_density=self.grain_density)
-        self.sed_params = {"ssc": self.ssc, "bulk_density": self.bulk_density, "settling_rate": self.settling_rate}
+        self.sed_params = {'ssc': self.ssc, 'bulk_density': self.bulk_density, 'settling_rate': self.settling_rate}
 
         self.remaining_cycles = self.tides.cycles.loc[self.pos :]
         self.setup_pbar()
@@ -70,22 +70,22 @@ class Model:
         return net / years
 
     def pickle(self, path: str) -> None:
-        with open(path, "wb") as f:
+        with open(path, 'wb') as f:
             pickle.dump(self, f, pickle.HIGHEST_PROTOCOL)
 
     def setup_pbar(self) -> None:
-        unit = "year"
+        unit = 'year'
         if len(self.remaining_cycles) < self.pbar_unit:
-            unit = "day"
+            unit = 'day'
             self.pbar_unit = CYCLES_PER_DAY
         total = round(self.remaining_cycles.shape[0] / self.pbar_unit, 2)
         self.pbar_opts = {
-            "total": total,
-            "unit": unit,
-            "dynamic_ncols": True,
-            "maxinterval": 1,
-            "smoothing": 0,
-            "postfix": {"Elevation": f"{self.platform.elevation_ref:.3f} ({0.0:+.3f}) m"},
+            'total': total,
+            'unit': unit,
+            'dynamic_ncols': True,
+            'maxinterval': 1,
+            'smoothing': 0,
+            'postfix': {'Elevation': f'{self.platform.elevation_ref:.3f} ({0.0:+.3f}) m'},
         }
         self.pbar = tqdm(**self.pbar_opts)
 
@@ -94,7 +94,7 @@ class Model:
         years = (self.now - self.start) / YEAR
         net_per_year = net / years if years > 0 else 0
         self.pbar.set_postfix(
-            {"Elevation": f"{self.platform.elevation_ref + net:.3f} m | {net_per_year*100:+.2f} cm/yr"}, refresh=False
+            {'Elevation': f'{self.platform.elevation_ref + net:.3f} m | {net_per_year*100:+.2f} cm/yr'}, refresh=False
         )
         step = round((self.pos + 1) / self.pbar_unit, 2) - self.pbar.n
         self.pbar.update(n=step)
@@ -138,7 +138,7 @@ class Model:
         except IndexError:
             pass
         finally:
-            summary["i"] = i
+            summary['i'] = i
             self.inundations.append(summary)
 
     def run(self) -> None:
@@ -146,40 +146,40 @@ class Model:
             while self.now < self.end:
                 self.step()
             self.pbar.close()
-            self.logger.info("Simulation completed. Exiting.")
+            self.logger.info('Simulation completed. Exiting.')
 
     def summarize(self) -> Bunch:
         return Bunch(platform=self.elevation_history(), inundations=self.inundation_history())
 
     def elevation_history(self):
         index = pd.date_range(self.start, self.end, freq=self.freq)
-        subsidence = pd.Series(data=self.bkgrd_offset(index - self.start), index=index, name="subsidence")
+        subsidence = pd.Series(data=self.bkgrd_offset(index - self.start), index=index, name='subsidence')
         aggradation = self.platform.report()
         totals = pd.concat([aggradation, subsidence], axis=1).ffill()
-        totals["net"] = totals.aggradation + totals.subsidence
-        totals["elevation"] = self.platform.elevation_ref + totals.net
+        totals['net'] = totals.aggradation + totals.subsidence
+        totals['elevation'] = self.platform.elevation_ref + totals.net
         return totals
 
     def inundation_history(self):
-        inundations = pd.concat(self.inundations, axis=1).T.sort_values("i")
-        return inundations.groupby("i").apply(self.process_inundations)
+        inundations = pd.concat(self.inundations, axis=1).T.sort_values('i')
+        return inundations.groupby('i').apply(self.process_inundations)
 
     @staticmethod
     def process_inundations(df):
         hp_weights = df.hydroperiod / df.hydroperiod.sum()
         s = df.reset_index().agg(
             {
-                "start": "min",
-                "end": "max",
-                "hydroperiod": "sum",
-                "aggradation": "mean",
-                "max_depth": "max",
-                "valid": "all",
+                'start': 'min',
+                'end': 'max',
+                'hydroperiod': 'sum',
+                'aggradation': 'mean',
+                'max_depth': 'max',
+                'valid': 'all',
             }
         )
-        s["mean_depth"] = (df.mean_depth * hp_weights).sum()
-        s["cycles"] = df.index.values
-        s["num_cycles"] = df.index.shape[0]
+        s['mean_depth'] = (df.mean_depth * hp_weights).sum()
+        s['cycles'] = df.index.values
+        s['num_cycles'] = df.index.shape[0]
         return s
 
     @staticmethod
