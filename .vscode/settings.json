@@ -21,19 +21,8 @@
         ".python-version": false,
         "archive.tar.gz": false
     },
-    "isort.args": [
-        "--profile",
-        "black"
-    ],
     "jupyter.allowUnauthorizedRemoteConnection": true,
     "jupyter.notebookFileRoot": "${workspaceFolder}",
-    "python.formatting.blackArgs": [
-        "--line-length",
-        "120",
-        "--experimental-string-processing"
-    ],
-    "python.formatting.provider": "black",
-    "python.languageServer": "Pylance",
     "todo-tree.general.tags": [
         "BUG",
         "HACK",
@@ -95,5 +84,18 @@
         "opacity": 50,
         "type": "text-and-comment"
     },
-    "todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|^\\s*(-|\\d+.))\\s*($TAGS).*(\\n\\s*//\\s{2,}.*)*"
+    "todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|^\\s*(-|\\d+.))\\s*($TAGS).*(\\n\\s*//\\s{2,}.*)*",
+    "black-formatter.importStrategy": "fromEnvironment",
+    "ruff.args": [
+        "--config=pyproject.toml"
+    ],
+    "ruff.importStrategy": "fromEnvironment",
+    "python.analysis.diagnosticMode": "workspace",
+    "python.linting.mypyEnabled": true,
+    "python.linting.mypyArgs": [
+        "--config-file=pyproject.toml"
+    ],
+    "black-formatter.args": [
+        "--config=pyproject.toml"
+    ],
 }
