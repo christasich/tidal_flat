@@ -38,10 +38,10 @@ repos:
     hooks:
       - id: mypy
         args: [--config-file=pyproject.toml]
-  - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: "0.9.1"
-    hooks:
-      - id: pyproject-fmt
+  # - repo: https://github.com/tox-dev/pyproject-fmt
+  #   rev: "0.9.1"
+  #   hooks:
+  #     - id: pyproject-fmt
   - repo: https://github.com/bwhmather/ssort
     rev: v0.11.6
     hooks:
