@@ -10,9 +10,10 @@ import pandas as pd
 from scipy.interpolate import PchipInterpolator
 from scipy.signal import detrend
 
-from .. import data
-from ..constants import YEAR
-from ..helpers import find_pv
+from tidal_flat import data
+from tidal_flat.constants import YEAR
+from tidal_flat.helpers import find_pv
+
 from .inundation import Inundation
 
 lp_data = pkg_resources.files(data).joinpath('lunar_phases.csv')

@@ -42,9 +42,9 @@ def make_combos(**kwargs: Any) -> list[Bunch]:
             kwargs[key] = [value]
         if isinstance(value, (np.ndarray)):
             kwargs[key] = value.tolist()
-    keys, values = zip(*kwargs.items())
+    keys, values = zip(*kwargs.items(), strict=True)
     combos = list(it.product(*values))
-    return [Bunch(**dict(zip(keys, combo))) for combo in combos]
+    return [Bunch(**dict(zip(keys, combo, strict=True))) for combo in combos]
 
 
 def find_pv(data: pd.Series, distance: str | None = None) -> tuple[pd.Series, pd.Series]:
