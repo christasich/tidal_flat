@@ -196,6 +196,7 @@
     "todo-tree.tree.tooltipFormat": "${filename}:[${line}] in ${filepath}",
     "conventionalCommits.scopes": [
         "pre-cm",
-        "settings"
+        "settings",
+        "deps"
     ]
 }
