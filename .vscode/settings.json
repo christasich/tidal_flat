@@ -131,6 +131,11 @@
         "--config=pyproject.toml"
     ],
     "black-formatter.importStrategy": "fromEnvironment",
+    "conventionalCommits.scopes": [
+        "pre-cm",
+        "settings",
+        "deps"
+    ],
     "jupyter.allowUnauthorizedRemoteConnection": true,
     "jupyter.notebookFileRoot": "${workspaceFolder}",
     "python.analysis.diagnosticMode": "workspace",
@@ -193,10 +198,5 @@
     "todo-tree.highlights.enabled": false,
     "todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|^[ \\t]*(-|\\d+.))\\s*($TAGS)",
     "todo-tree.tree.labelFormat": "${tag:uppercase} ${after} [${filename}]",
-    "todo-tree.tree.tooltipFormat": "${filename}:[${line}] in ${filepath}",
-    "conventionalCommits.scopes": [
-        "pre-cm",
-        "settings",
-        "deps"
-    ]
+    "todo-tree.tree.tooltipFormat": "${filename}:[${line}] in ${filepath}"
 }
