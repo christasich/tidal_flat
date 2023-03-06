@@ -1,30 +1,136 @@
 {
+    "better-comments.tags": [
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#6a6758",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "- [x]",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#6a6758",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "[x]",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#FF2D00",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "!",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#3498DB",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "?",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#FF8C00",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "todo",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#FF8C00",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "[ ] todo",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#FF8C00",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "- [ ] todo",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#FF2D00",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "bug",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#FF2D00",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "[ ] bug",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#FF2D00",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "- [ ] bug",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#FF2D00",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "fix",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#FF2D00",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "[ ] fix",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#FF2D00",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "- [ ] fix",
+            "underline": false
+        },
+        {
+            "backgroundColor": "transparent",
+            "bold": false,
+            "color": "#98C379",
+            "italic": false,
+            "strikethrough": false,
+            "tag": "*",
+            "underline": false
+        }
+    ],
     "black-formatter.args": [
         "--config=pyproject.toml"
     ],
     "black-formatter.importStrategy": "fromEnvironment",
-    "files.exclude": {
-        "**/*.code-workspace": false,
-        "**/.DS_Store": false,
-        "**/.cache": false,
-        "**/.git": false,
-        "**/.gitattributes": false,
-        "**/.gitignore": false,
-        "**/.gitkeep": false,
-        "**/.mypy_cache": false,
-        "**/.pre-commit-config.yaml": false,
-        "**/.svn": false,
-        "**/.venv": false,
-        "**/.vscode": false,
-        "**/poetry.lock": false,
-        "**/pyproject.toml": false,
-        "**/setup.cfg": false,
-        ".gitattributes": false,
-        ".gitignore": false,
-        ".pre-commit-config.yaml": false,
-        ".python-version": false,
-        "archive.tar.gz": false
-    },
     "jupyter.allowUnauthorizedRemoteConnection": true,
     "jupyter.notebookFileRoot": "${workspaceFolder}",
     "python.analysis.diagnosticMode": "workspace",
@@ -36,66 +142,60 @@
         "--config=pyproject.toml"
     ],
     "ruff.importStrategy": "fromEnvironment",
+    "todo-tree.filtering.excludeGlobs": [
+        "**/.venv/*"
+    ],
+    "todo-tree.filtering.includedWorkspaces": [
+        "dissertation"
+    ],
+    "todo-tree.general.tagGroups": {
+        "BUG": [
+            "BUG",
+            "FIX",
+            "FIXME",
+            "fix",
+            "fixme"
+        ],
+        "MARK": [
+            "MARK",
+            "mark"
+        ],
+        "TODO": [
+            "TODO",
+            "todo"
+        ]
+    },
     "todo-tree.general.tags": [
-        "BUG",
-        "HACK",
-        "FIXME",
         "TODO",
-        "NOTE",
-        "COMMENT",
-        "[ ]",
-        "[x]"
+        "todo",
+        "BUG",
+        "FIX",
+        "FIXME",
+        "fix",
+        "fixme",
+        "MARK",
+        "mark"
     ],
     "todo-tree.highlights.customHighlight": {
         "BUG": {
-            "background": "red",
-            "foreground": "black",
-            "iconColour": "red"
+            "icon": "bug",
+            "iconColour": "#EE4B2B"
         },
-        "COMMENT": {
-            "background": "gray",
-            "foreground": "white",
-            "icon": "note",
-            "iconColour": "gray"
-        },
-        "FIXME": {
-            "background": "yellow",
-            "foreground": "black",
-            "iconColour": "yellow"
-        },
-        "NOTE": {
-            "background": "gray",
-            "foreground": "white",
-            "icon": "note",
-            "iconColour": "gray"
+        "MARK": {
+            "icon": "bookmark",
+            "iconColour": "#0096FF"
         },
         "TODO": {
-            "background": "white",
-            "foreground": "black",
-            "icon": "check",
-            "iconColour": "white"
-        },
-        "[ ]": {
-            "background": "white",
-            "foreground": "black",
-            "icon": "check",
-            "iconColour": "yellow"
-        },
-        "[x]": {
-            "background": "green",
-            "foreground": "white",
-            "icon": "check",
-            "iconColour": "green"
+            "icon": "checklist",
+            "iconColour": "#AAFF00"
         }
     },
-    "todo-tree.highlights.defaultHighlight": {
-        "background": "white",
-        "foreground": "black",
-        "gutterIcon": true,
-        "icon": "alert",
-        "iconColour": "blue",
-        "opacity": 50,
-        "type": "text-and-comment"
-    },
-    "todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|^\\s*(-|\\d+.))\\s*($TAGS).*(\\n\\s*//\\s{2,}.*)*"
+    "todo-tree.highlights.enabled": false,
+    "todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|^[ \\t]*(-|\\d+.))\\s*($TAGS)",
+    "todo-tree.tree.labelFormat": "${tag:uppercase} ${after} [${filename}]",
+    "todo-tree.tree.tooltipFormat": "${filename}:[${line}] in ${filepath}",
+    "conventionalCommits.scopes": [
+        "pre-cm",
+        "settings"
+    ]
 }
