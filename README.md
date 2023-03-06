@@ -26,7 +26,7 @@ The full description will be described in Chris Tasich's upcoming dissertation.
 
 ### Requirements
 
-- [Python](https://www.python.org/) (&geq;3.8.1, &lt;3.11)
+- [Python](https://www.python.org/) (&geq;3.8.1, &lt;3.12)
 - [Git LFS](https://git-lfs.com/)
 - [Poetry](https://python-poetry.org/)
 
