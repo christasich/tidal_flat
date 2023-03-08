@@ -134,7 +134,8 @@
     "conventionalCommits.scopes": [
         "pre-cm",
         "settings",
-        "deps"
+        "deps",
+        "dev-deps"
     ],
     "jupyter.allowUnauthorizedRemoteConnection": true,
     "jupyter.notebookFileRoot": "${workspaceFolder}",
