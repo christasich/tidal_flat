@@ -47,7 +47,7 @@ git lfs install
 Afterwards, use git to clone this repository into your computer.
 
 ```sh
-git clone https://gitlab.jgilligan.org/chris/tidal_flat.git
+git clone https://github.com/christasich/tidal_flat.git
 ```
 
 Then navigate inside the cloned repository and install the environment.
@@ -192,7 +192,7 @@ This package is actively being developed. Only the bare essentials have been doc
 
 ## Report an issue / Ask a question
 
-Use the [GitLab repository Issues](https://gitlab.jgilligan.org/chris/tidal_flat/-/issues).
+Use the [GitLab repository Issues](https://github.com/christasich/tidal_flat/issues).
 
 ## Sources
 
