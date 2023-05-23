@@ -4,7 +4,7 @@
 
 A zero-dimensional morphodynamic model of elevation change on a tidal platform.
 
-![visitors](https://visitor-badge.glitch.me/badge?page_id=christasich.tidal_flat)
+[![Visitors](https://api.visitorbadge.io/api/visitors?path=christasich.tidal_flat&countColor=%233485c2)](https://visitorbadge.io/status?path=christasich.tidal_flat)
 
 </div>
 
