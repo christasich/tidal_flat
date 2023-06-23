@@ -1,7 +1,7 @@
 fail_fast: true
 repos:
   - repo: https://github.com/python-poetry/poetry
-    rev: 1.5.0 # poetry
+    rev: 1.5.1
     hooks:
       - id: poetry-check
       - id: poetry-lock
