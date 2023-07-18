@@ -191,11 +191,14 @@ class Tides:
         copy.update()
         return copy
 
-    def subset(self, start: str | None = None, end: str | None = None) -> Tides:
+    def subset(self, start: str | None = None, end: str | None = None, at_cycle: bool = True) -> Tides:
         copy = deepcopy(self)
-        i = copy.data.loc[start:end].low.idxmax()
-        ii = copy.data.loc[start:end].low[::-1].idxmax()
-        copy.data = copy.data.loc[i:ii]
+        if at_cycle:
+            i = copy.data.loc[start:end].low.idxmax()
+            ii = copy.data.loc[start:end].low[::-1].idxmax()
+            copy.data = copy.data.loc[i:ii]
+        else:
+            copy.data = copy.data.loc[start:end]
         copy.update()
         return copy
 
