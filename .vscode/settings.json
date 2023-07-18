@@ -133,7 +133,8 @@
     "black-formatter.importStrategy": "fromEnvironment",
     "conventionalCommits.scopes": [
         "settings",
-        "deps"
+        "deps",
+        "tides"
     ],
     "jupyter.allowUnauthorizedRemoteConnection": true,
     "jupyter.notebookFileRoot": "${workspaceFolder}",
